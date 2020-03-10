@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583854350944.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "95EB4112",
+    "lastKnownWriteTime" : 1583855043,
+    "last_content_update" : 1583855043030,
+    "path" : "C:/Projects/Rpackage/APS/man/get_ap_bb_ticker_by_name.Rd",
+    "project_path" : "man/get_ap_bb_ticker_by_name.Rd",
+    "properties" : {
+        "cursorPosition" : "10,0",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 7,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_doc"
+}

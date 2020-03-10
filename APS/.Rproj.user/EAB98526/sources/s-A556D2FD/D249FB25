@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583839401888.000,
+    "dirty" : true,
+    "encoding" : "UTF-8",
+    "folds" : "75|53|88|0|\n92|49|120|0|\n114|26|118|4|\n123|52|174|0|\n177|64|206|0|\n209|80|306|2|\n466|29|481|1|\n482|31|509|1|\n510|20|527|1|\n528|24|614|1|\n615|24|620|1|\n621|28|621|42|\n622|48|766|1|\n767|36|971|1|\n972|69|1272|1|\n1273|29|1406|1|\n1407|36|1720|1|\n1721|59|1738|1|\n1739|37|1751|1|\n1752|20|1768|1|\n1769|32|1930|1|\n1931|32|2015|1|\n2016|47|2107|1|\n2108|29|2115|1|\n2116|38|2121|1|\n2122|72|2160|0|\n",
+    "hash" : "0",
+    "id" : "D249FB25",
+    "lastKnownWriteTime" : 1583853699,
+    "last_content_update" : 1583858202213,
+    "path" : "C:/Projects/Rpackage/APS/R/APS_functions.R",
+    "project_path" : "R/APS_functions.R",
+    "properties" : {
+        "cursorPosition" : "206,1",
+        "scrollLine" : "75"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

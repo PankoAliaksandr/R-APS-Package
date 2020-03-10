@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583854270777.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "12E2A3BC",
+    "lastKnownWriteTime" : 1583855025,
+    "last_content_update" : 1583855025130,
+    "path" : "C:/Projects/Rpackage/APS/man/getTargetTable.Rd",
+    "project_path" : "man/getTargetTable.Rd",
+    "properties" : {
+        "cursorPosition" : "5,0",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 6,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_doc"
+}

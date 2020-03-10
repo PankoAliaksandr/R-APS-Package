@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583853547676.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "4108794472",
+    "id" : "877762B5",
+    "lastKnownWriteTime" : 1583854888,
+    "last_content_update" : 1583854888502,
+    "path" : "C:/Projects/Rpackage/APS/man/FAFunc.GetDB.Rd",
+    "project_path" : "man/FAFunc.GetDB.Rd",
+    "properties" : {
+        "cursorPosition" : "6,31",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 3,
+    "source_on_save" : true,
+    "source_window" : "",
+    "type" : "r_doc"
+}

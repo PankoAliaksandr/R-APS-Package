@@ -1,0 +1,14 @@
+\name{FAFunc.GetDB}
+\alias{FAFunc.GetDB}
+\title{Hello, World!}
+\usage{
+FAFunc.GetDB()
+}
+\description{
+Prints 'Hello, world!'.
+}
+\examples{
+FAFunc.GetDB()
+}
+
+

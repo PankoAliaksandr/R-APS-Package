@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583853808135.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "3349B21",
+    "lastKnownWriteTime" : 1583854952,
+    "last_content_update" : 1583854952845,
+    "path" : "C:/Projects/Rpackage/APS/man/getRCOSetSettings.Rd",
+    "project_path" : "man/getRCOSetSettings.Rd",
+    "properties" : {
+        "cursorPosition" : "5,0",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 4,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_doc"
+}
