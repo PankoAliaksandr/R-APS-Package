@@ -13,3 +13,4 @@ Imports:
   nloptr,
   reshape,
   dplyr
+RoxygenNote: 7.0.2
