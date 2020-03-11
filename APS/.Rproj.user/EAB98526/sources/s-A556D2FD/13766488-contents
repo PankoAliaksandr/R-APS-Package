@@ -1,0 +1,9 @@
+\name{f.setOptfunctions}
+\alias{f.setOptfunctions}
+\title{f.setOptfunctions}
+\usage{f.setOptfunctions(set)}
+\description{get the proper functions depending on settings!}
+\arguments{
+  \item{set}{Set of input options}
+}
+%\examples{isDate(mydate, format = "\%Y-\%m-\%d")}

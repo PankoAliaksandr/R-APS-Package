@@ -12,5 +12,6 @@ Imports:
   RODBC,
   nloptr,
   reshape,
-  dplyr
+  dplyr,
+  stats
 RoxygenNote: 7.0.2

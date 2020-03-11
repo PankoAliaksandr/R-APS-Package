@@ -304,129 +304,833 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
   print("Analyst Portfolio ID parameter is not valid")
   stop("Analyst Portfolio ID parameter is not valid")
 }
+}
+
+# get COV for ID from sql
+f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long"))
+{
+  # Description
+  #   This function downloads covariance matrix from DB
+  #   and can convert it to wide/long format
+
+  # Dependencies:
+  #   1. require("RODBC")
+  #   2. require("reshape")
+
+  # Test example
+  # f.getCovFromSQL(RunID = -11, CalculationMethod = "cov", WideOrLong = "wide")
+
+
+  selstr <- paste("select Ticker1, Ticker2, Covariance from betsizing.CovarianceMatrixFlattened ",
+                  "where RunID=", RunID, " and CalculationMethod='", CalculationMethod, "'", sep="")
+
+  con <- FAFunc.GetDB()
+
+  # Get covariance matrix
+  cov_df <- RODBC::sqlQuery(con, selstr)
+
+  # Close DB connection
+  RODBC::odbcClose(con)
+
+  if(class(cov_df) == "data.frame"){
+    if(nrow(cov_df) > 0){
+      if(WideOrLong == "wide"){
+
+        # change to wide format
+        cov_df <- as.data.frame(reshape::cast(cov_df, Ticker1 ~ Ticker2 , value = "Covariance", fill = 0))
+        rownames(cov_df) <- cov_df$Ticker1
+        cov_df$Ticker1 <- c()
+
+        # check symmetry
+        stopifnot(all(round(cov_df, 7) == t(round(cov_df, 7))))
+      }
+      else{
+        # Long format is required
+        # Nothing. CovMa is already in long format
+      }
+    }else{
+      # No rows in CovMa
+      stop(paste("Chosen Covariance with id", RunID,
+                 "and CalculationMethod", CalculationMethod, "does not exist!"))
+    }
+  }else{
+    # reult has class != data.frame
+    stop("getCovFromSQL: Query contains a mistake")
   }
 
-#
-# runRCOFromAPS <- function(portfolioName,
-#                           calculation_date,
-#                           covMaSetID,
-#                           RCOSetID,
-#                           isReal = FALSE,
-#                           calc_method){
-#
-#
-#
-#   # Description
-#   #   The function executes the opritizer call with
-#   #   correct parameters and writes oprimized weights to DB
-#
-#   # Dependencies:
-#   #   1. require("RODBC")
-#   #   2. library(nloptr)
-#   #   3. require("reshape")
-#   #   4. library(dplyr)
-#
-#   # Functions:
-#   #   1. FAFunc.GetDB()     [external*]
-#   #   2. getTargetTable     [internal]
-#   #   3. getRCOSetSettings  [internal]
-#   #   4. f.getCovFromSQL    [external]
-#   #   5. f.runRCO           [external]
-#   #   6. f.writeRCOresToSQL [external]
-#
-#   print("The process has been started")
-#
-#   # Download [external] functions
-#   source("G:/FAP/Equities/Betsizing/Code/RCO.R")
-#   # debug(f.runRCO)
-#
-#   connection <- FAFunc.GetDB()
-#
-#   # Get lower and upper bounds # tradability const
-#   target_table <- getTargetTable(portfolioName = portfolioName,
-#                                  calculation_date = calculation_date,
-#                                  isReal = isReal,
-#                                  connection = connection)
-#
-#   if(nrow(target_table) > 0){
-#     print("GOOD: target table is NOT empty")
-#     print(target_table, row.names=TRUE, digits=5)
-#   }else{
-#     print("BAD: target table is empty")
-#   }
-#   #check if boundaries are compatible with the direction convictions: ADDED!
-#   stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
-#
-#
-#
-#
-#   RCO_settings_df <- getRCOSetSettings(RCOSetID = RCOSetID,
-#                                        connection = connection)
-#   if(length(RCO_settings_df) > 0){
-#     print("GOOD: RCO settings table is NOT empty")
-#     print(RCO_settings_df, row.names=TRUE)
-#   }else{
-#     print("BAD: RCO settings table is empty")
-#   }
-#
-#   # TODO  use APS package
-#   covMa <- f.getCovFromSQL(RunID = covMaSetID,
-#                            CalculationMethod = calc_method,
-#                            WideOrLong = "wide")
-#
-#   if(nrow(covMa) > 0){
-#     print("GOOD: covMa is NOT empty")
-#   }else{
-#     print("BAD: covMa is empty")
-#   }
-#
-#   # check dimensions -> delete if not equal to expected value
-#
-#   # reduce target_table on those with an active conviction
-#   opt_weights_relative <- rep(0,length=nrow((target_table)))
-#   sec_a <- target_table$conviction != 0
-#   target_table_a <- target_table[sec_a,]
-#
-#   # The function should calculate optimal weights and update optimal weights
-#   tryCatch(
-#     { # Try section
-#
-#       # TODO first copy the function here, second use APS package
-#       RCOres <- f.runRCO(targ = target_table_a,
-#                          set = RCO_settings_df,
-#                          cov = covMa)
-#     }, error = function(e){
-#       print(paste0("runRCO stopped with an error: ", e))
-#       stop("runRCO stopped with an error: ", e)
-#     }
-#   )
-#
-#   #check if optimization returned a valid result
-#   if(as.logical(RCOres$optim_details["validResult"]) == FALSE) {stop("no valid result found in optimization")}
-#
-#
-#
-#   # Optimal weights are updated in SQL table
-#   opt_weights_relative[sec_a] <- RCOres$rw
-#   opt_weights_portfolio <- -target_table$lb + opt_weights_relative
-#   calcdatetime <- RCOres$optim_details["Calculated"]
-#   names(opt_weights_relative) <- names(opt_weights_portfolio) <- rownames(target_table)
-#
-#   # create upload df
-#   covMaSetID <- as.integer(covMaSetID)
-#   RCOSetID <- as.integer(RCOSetID)
-#
-#   print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
-#
-#   f.writeRCOresToSQL(res_rel = opt_weights_relative*100,#sql-table stores values in Percentage
-#                      res_p = opt_weights_portfolio*100, #sql-table stores values in Percentage
-#                      portfolio = portfolioName,
-#                      covID = covMaSetID,
-#                      setID = RCOSetID,
-#                      calcdatetime = calcdatetime)
-#   # Close connection
-#   odbcClose(connection)
-# }
+  return(cov_df)
+}
+
+#Write the optimized weights into the SQL-Result-Upload table
+f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
+{
+  # Description
+  #   The function uploads optimized asset weights
+  #   and the corresponding settings to DB
+
+  # Dependensies
+  #   library(RODBC)
+
+  # Input Parameters:
+  #   res_rel: (optimized) relative weights,
+  #   res_p: optimized portfolio weights = res_rel + Benchmarkweight
+  #   portfolio: Analyst Portfolio name
+  #   covID: RunID of the CovMatrix,
+  #   setID: RCO setting from betsizing.CalculationRCOSettingSetsID
+  #   calcdatetime: the day and time of calculation
+
+  # Test example
+  #     opt_weights_relative <- rep(0.05,20)
+  #     opt_weights_portfolio <- rep(0.01,20)
+  #     names(opt_weights_relative) <- names(opt_weights_portfolio) <- seq(1:20)
+  #     portfolio <- "U1355708-7 Client";
+  #     covID <- 777;
+  #     setID <-  2;
+  #     calcdatetime <- "2020-01-01"
+  #     f.writeRCOresToSQL(opt_weights_relative,
+  #                        opt_weights_portfolio,
+  #                        portfolio,covID,setID,calcdatetime)
+
+
+  # TODO rename res_rel in opt_rel_weights
+  # TODO rename res_p in opt_abs_weights
+  # TODO rename portfolio in AP_name
+
+
+  if(class(res_rel) == "numeric" &&
+     class(res_p) == "numeric" &&
+     class(portfolio) == "character" &&
+     class(covID) == "integer" &&
+     class(setID) == "integer" &&
+     class(calcdatetime) == "character"){
+
+    # Input has right type
+    constituents <- names(res_p)
+
+    if(all(names(res_rel) == constituents)){
+      # Constituents' optimized absolute and relative weights have the same order
+      n_constituents <- length(res_p)
+      # Portfolio must be the same for all constituents
+      portfolio <- rep(x = portfolio, times = n_constituents)
+
+      # Prepare table structure
+      # This part is very tricky, sqlSave parameters leads to bug.
+
+      df_to_upload <- data.frame(CalculationRCOResultForUploadID = seq(1:n_constituents),
+                                 CalculationDate = calcdatetime,
+                                 FKAPS = portfolio,
+                                 FKCovMaRunID = covID,
+                                 FKCalculationRCOSettingSetID = setID,
+                                 Ticker = constituents,
+                                 OptimizedRelativeWeight = res_rel,
+                                 OptimizedPortfolioWeight = res_p)
+
+      # delete current entries + Insert
+      con <- FAFunc.GetDB()
+      table <- "betsizing.CalculationRCOResultForUpload"
+
+      try(RODBC::sqlDrop(channel = con, sqtable =  table, errors = FALSE), silent = TRUE)
+
+      columnTypes <- list(CalculationRCOResultForUploadID = "int",
+                          CalculationDate = "datetime",
+                          FKAPS = "NVARCHAR(50)",
+                          FKCovMaRunID = "int",
+                          FKCalculationRCOSettingSetID = "int",
+                          Ticker = "NVARCHAR(50)",
+                          OptimizedRelativeWeight = "decimal(15,3)",
+                          OptimizedPortfolioWeight = "decimal(15,3)")
+
+      s <- RODBC::sqlSave(channel = con,
+                          dat = df_to_upload,
+                          tablename = table,
+                          varTypes = columnTypes)
+
+      # Close connection
+      RODBC::odbcClose(con)
+
+      if(s == 1){
+        print(paste("successfully inserted all specificTickerValues for the portfolio: ",
+                    portfolio[1],
+                    ", set: ",
+                    setID,
+                    ",cov: ",
+                    covID))
+        # 0 is sucess
+        return(0)
+      }else{
+        stop("some error in sql insert")
+      }
+    }else{
+      stop("The order of constituents is not the same for absolute and relative optimized weights")
+    }
+  }else{
+    stop("writeRCOresToSQL: at least one of the input parameters is of a wrong type")
+  }
+  #example
+  #res_rel <- RCOres$RW[,1];res_p <- res_rel-RCOres$TARG[,"lb",1];portfolio <- "EQ_CH_L"; covID <- as.integer(7) ;setID <- as.integer(1) ;calcdatetime <- as.character(Sys.Date())
+  #f.writeRCOresToSQL(res_rel,res_p,portfolio,covID,setID,calcdatetime)
+}
+
+# TRANSFORM FACTORS INTO NUMERICS
+f.as.numeric.factor <- function(x) {
+  # check if is already numeric then do nothing
+  if (class(x) == "numeric") {
+    return(x)
+  }
+  else
+  {
+    as.numeric(levels(x))[x]
+  }
+}
+
+# reorder COV for specific ticker vector
+f.matchCOVtoTickers <- function(Tickers,COV) {
+
+  # Description
+  #   1. Make sure CovMa has the same tickers as Tickers
+  #   2. Make sure the sequence is also the same
+
+  # Dependencies:
+  #   1. f.as.numeric.factor
+
+  # Return value:
+  #  covariance matrix
+
+  if(class(COV) == "data.frame"){
+    # Check missing tickers
+    cov_df_col_names <- colnames(COV)
+    cov_df_row_names <- rownames(COV)
+
+    if(all(cov_df_col_names == cov_df_row_names) == TRUE){
+      # The same sequence in CovMa rows and columns is checked
+
+
+      missTick <- Tickers[is.na(match(Tickers, cov_df_col_names))]
+      if(length(missTick) == 0){
+        # we know that tickers are the same. Only sequience can be theoretically different
+        # change order to make it the same
+        # if COV has more tickers than Tickers it will also work
+        COV <- COV[Tickers, Tickers]
+
+        # Convert to numeric matrix
+        cov_ma <- as.matrix(sapply(COV, f.as.numeric.factor))
+
+        if(isSymmetric.matrix(cov_ma, check.attributes = FALSE) == TRUE){
+          return(COV)
+        }else{
+          stop("Covariance Matrix is not symmetric")
+        }
+      }else{
+        stop(paste("The following Tickers lack in Covariance matrix:", paste(missTick, collapse = ", ")))
+      }
+    }else{
+      stop("CovMa: column names and row names are not the same")
+    }
+  }else{
+    stop("COV parameter must be of data.frame type")
+  }
+}
+
+#get the proper functions depending on settings!
+f.setOptfunctions <- function(set, k = 0)
+{
+  # Dependencies
+  #   NO
+
+  #target function
+  if(set$IndexFlex == TRUE)
+  {
+    ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
+    {
+      return(list("objective" =  as.matrix(-abs(c(0,t(rb_a[-1]))) %*% log(abs(x)))+ NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
+                  "gradient"  = diag(A)*as.matrix(c(0.00,abs(rb_a[-1])) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
+      ))
+    }
+  } else{
+    ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
+    {
+      return(list("objective" =  as.matrix(-abs(t(rb_a)) %*% log(abs(x))) + NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
+                  "gradient"  = diag(A)*as.matrix(abs(rb_a) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
+      ))
+    }
+  }
+
+  #nlcons
+  stopifnot(set$Ix_eq_Cash==FALSE || (set$Ix_eq_Cash==TRUE && set$SoftNetInvConstraint==FALSE && set$IndexFlex==FALSE)) #check if nlcon-settings are allowed
+
+  #set the right nlcon
+  if(set$SoftNetInvConstraint == TRUE)
+  {
+    #nlcon depend on treatment of index asset
+    if(set$IndexFlex==TRUE)
+    {
+      print(paste("OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range"))
+      nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda)
+      {#OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range (Index still has to impact TE, just in TargetFunction disregarded!)
+        return(list("constraints"= c(
+          diag(c(0,diag(A[-1,-1]))) %*% w                                #direction constraint
+          ,sqrt(t(w) %*% COVAR %*% w) - target_te #TE-constraint
+          ,sum(w) - LeverageTolerance      #max postive NetInvestment (Leverage)
+          ,-sum(w) - CashTolerance          #max negative NetInvestemnt (Cash)
+          ,w[1] * (COVAR %*% w)[1] / as.numeric(t(w) %*% COVAR %*% w) - rb_a[1]#limit risk contribution of first (index position's)
+        ),
+        "jacobian" = rbind(
+          diag(c(0,diag(A[-1,-1])))                                    #gradient direction constraint
+          ,t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))  #gradient TE-constraint
+          ,t(rep(1,length(w)))                 #gradient: no leverage constraint
+          ,t(rep(-1,length(w)))                #gradient max Short position
+          ,t(rbind( (((COVAR %*% w)[1] + w[1]*COVAR[1,1])* (t(w)%*%COVAR%*%w) - 2*w[1]*COVAR[1,]%*%w*(COVAR%*%w)[1]) / (t(w) %*% COVAR %*% w)^2, #first row derivative after w[1]
+                    as.numeric(w[1]/(t(w) %*% COVAR %*% w))*COVAR[1,-1]                                                    #row 2:n derivatives after w[2:n]   (1)
+                    - as.numeric((2*w[1]*(COVAR[1,]%*% w))/(t(w) %*% COVAR %*% w)^2)*COVAR[-1,]%*%w )))                    #row 2:n derivatives after w[2:n]   (2)
+        )
+        )
+      }
+
+      #here still make an extension for Ix_eq_Cash (cond. on parameter!!!). A bit tough to adjust the formula!!!
+      #else if set$Ix_eq_Cash: .....
+
+    } else {
+      #"OPTIMIZE: nlcon keeps NetInvestment within range, ix as normal asset"
+      print(paste("OPTIMIZE: nlcon keeps NetInvestment within range, ix as normal asset"))
+      nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
+        return(list(
+          "constraints"= c(as.matrix(A %*% w)  #direction constraints
+                           ,c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te)) #TE-constraint
+                           , sum(w) - LeverageTolerance               #allow for 25Bp Cash
+                           ,-sum(w) - CashTolerance                  #max Short position leverage constraint (s.t. Tolerance)
+          ),
+          "jacobian" = rbind(A
+                             ,as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))#t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))
+                             ,t(rep(1,length(w)) )                 #gradient: no leverage constraint
+                             ,t(rep(-1,length(w)))                 #gradient max Short position
+          )
+        ))
+      }
+    }
+
+  } else {
+    #leverage control happens in equality constrained!
+
+    # if(set$CashTolerance != 0 ) {print(paste("Currently this case is not feasible as here is the Non-SoftLeverage part where CashTolerance must =0!)
+    #                                          >>move to Soft-Leverage part to become more meaningful! / another Parameter with cash-target!"))}
+    #         if(set$Ix_eq_Cash)#equality constrained depends on IX_eq_Cash
+    #         {
+    #           stopifnot(set$algo %in% c("NLOPT_GN_ISRES","NLOPT_LN_AUGLAG_EQ"))
+    #           nlcon_eq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance){
+    #           return(list(
+    #           "constraints" = -sum(w[-1]) - CashTolerance,#replace CashTolerance with CashRequirement!!!
+    #           "jacobian"= c(0,rep(-1,(length(w)-1)))
+    #           ))
+    #
+    #         }
+    #       }else{ }
+    print(paste("OPTIMIZE: eqcon keeps NetInvestment == 0"))
+    nlcon_eq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
+      #"OPTIMIZE: eqcon keeps NetInvestment == 0"
+      return(list(
+        "constraints" = -sum(w),
+        "jacobian"= rep(-1,length(w))
+      ))
+    }
+
+    print(paste("Loop",k,"OPTIMIZE: ix as normal asset"))
+    nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
+      return(list(
+        "constraints"= c(as.matrix(A %*% w)  #direction constraints
+                         ,c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te)) #TE-constraint
+                         #  , sum(w) - CashTolerance                   #no leverage constraint (s.t. Tolerance)
+                         #   ,-sum(w) - CashTolerance                  #max Short position leverage constraint (s.t. Tolerance)
+        ),
+        "jacobian" = rbind(A
+                           ,as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))#t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))
+                           # ,t(rep(1,length(w)) )                 #gradient: no leverage constraint
+                           # ,t(rep(-1,length(w)))                 #gradient max Short position
+        )
+      ))
+    }
+
+  }
+
+  #return ftarget and nlcon
+  if(exists("nlcon_eq"))
+  {return(list(ftarget=ftarget,nlcon_eq=nlcon_eq,nlcon_ineq=nlcon_ineq))}else{
+    return(list(ftarget=ftarget,nlcon_ineq=nlcon_ineq))
+  }
+}
+
+# get range for weights of each ticker
+f.getWeightRange <- function(lb, ub, conviction, tradeability, MaxRelWeight, LowConvictionExitInDays = 10, ConvictionGroups = 1 )
+{
+  ConvictionGroups <- ConvictionGroups + 1
+  groupedConviction <-  dplyr::ntile(abs(conviction),ConvictionGroups)-1
+  ConvictionDegree <- pmax(1,groupedConviction)  #-1 as usually group without a bet is last, still ensure that factor is at least 1!
+
+  #plot(jitter(conviction),ConvictionDegree)
+
+  t_restrict <- LowConvictionExitInDays / tradeability * ConvictionDegree *10*10^(-4)  #tradeability quoted in days/10bp
+
+  w_min <- pmax(lb,-t_restrict,-MaxRelWeight)
+  w_max <- pmin(ub,t_restrict,MaxRelWeight)
+
+  return(list(w_min = w_min,
+              w_max = w_max,
+              ConvictionDegree = ConvictionDegree))
+
+  #examples
+  #t <- as.data.frame(RCOres$TARG[,,1]); lb <- t$lb;ub <- t$ub;conviction <- t$conviction;tr <- t$tradeability
+  #g1 <- f.getWeightRange(lb,ub,conviction,tr,0.1,LowConvictionExitInDays = 20,ConvictionGroups=7)
+  #cbind(rownames(targ),g1$w_min,g1$w_max,conviction,g1$ConvictionDegree)
+
+}
+
+#implement short-index in portfolio
+ImplIndexPosition <- function(w, w_bm, ZeroNetInvestment = FALSE)
+{
+  # Dependencies: NO
+
+  stopifnot(length(w)-1 == length(w_bm)) #w includes index position, w_bm only the index constituents!
+  #check bm-weights sum to 1
+  if(round(sum(w_bm),3)!= 1) #plausibility check: lb show benchmark-weight?
+  {message(paste("the lower bounds provided do not sum to 1, but to:",sum(w_bm)," - correct BM-weights needed to make a fully correct index replication"))
+    print("the w_bm are normalized that their sum adds to 1 - might lead to problems in implementation, leads to only indicative target weights")
+    w_bm <- w_bm/sum(w_bm)
+  }
+
+  #replicate index position of the first asset in portfolio
+  #print("first asset assumed as index asset")
+  if(ZeroNetInvestment==TRUE)
+  {
+    print("attention: this is changing the risk structure of the portfolio. probably unintended!")
+    w1. <- w[1]-sum(w) #assume overinvestment = index!
+    w[-1] <- w[-1]+w1.*w_bm
+  }else
+  {
+    w[-1] <- w[-1]+w[1]*w_bm
+  }
+  w[1] <- 0
+  return(w)
+
+  #example (needs an existing result in RCOres-form)
+  # w <- RCOres$RW[,1];w_bm <- -RCOres$TARG[-1,"lb",1];ZeroNetInvestment <- FALSE
+  #ImplIndexPosition(w,w_bm)
+}
+
+#get risk contributions of active weights
+get_rcb <- function(weight,cov)
+{
+  # Dependencies: NO
+
+  stopifnot(is.vector(weight)==1 && length(weight)==nrow(cov) && nrow(cov)==ncol(cov))
+  VAR <- as.numeric(t(weight) %*% as.matrix(cov) %*% weight)
+  rcb <- weight*as.matrix(cov) %*% weight
+  rcb <- rcb/VAR
+
+  #example (needs an existing result in RCOres-form)
+  # weight <- RCOres$RW[,1]
+  # cov <- RCOres$COV[,,1]
+  #(rcb <- get_rcb(weight,cov))
+}
+
+
+#####Optimization Results Characteristic
+OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target)
+{
+  # Functions:
+  # 1. ImplIndexPosition
+  # 2. get_rcb
+
+  # Replicate index short on the index title if desired to do so
+  IndexPosition <- rw[1]
+  NetInvestment <- sum(rw)
+  w_bm <- -lb[-1]
+  sec_nr <- length(rw)
+
+  #calculate weights to implement
+  rw_impl <- ImplIndexPosition(rw,w_bm)
+
+  #evaluate boundaries injured
+  lb_inj <- ifelse(rw_impl < lb, 1, 0)
+  ub_inj <- ifelse(rw_impl > ub, 1, 0)
+  const_hit <- ifelse(lb_inj + ub_inj > 0, 1, 0)
+  const_hit_pct <- sum(const_hit) / sec_nr
+
+  #tracking error
+  te<- as.numeric(sqrt(t(rw) %*% as.matrix(cov) %*% rw))
+
+  if(round(te,4) != round(as.numeric(sqrt(t(rw_impl) %*% as.matrix(cov) %*% rw_impl)),4)   ) #te portfolio needs to be unchanged by
+  {message("portfolio risk neutrality to implementation of index position in portfolio violated. Check LowerBounds and optimization quality!!!!")}
+  #risk contributions
+  rc <- get_rcb(weight=rw,cov=cov)
+
+  #sum of rc actual - target
+  total_rb_dev <- sum(abs(rc-rb_target))
+
+
+  #portfolio beta
+  p.beta <- t(rw) %*% cov[,1]/cov[1,1]
+
+  return(list(IndexPosition = IndexPosition,
+              NetInvestment = NetInvestment,
+              rw_impl = rw_impl,
+              te = te,
+              const_hit = const_hit,
+              const_hit_pct = const_hit_pct,
+              p.beta = p.beta,
+              rc = rc,
+              total_rb_dev = total_rb_dev))
+
+  #example (needs an existing result in RCOres-form)
+  # rw <- RCOres$RW[,1] ; cov <- RCOres$COV[,,1]; lb <- RCOres$TARG[,"lb",1]; ub <- RCOres$TARG[,"ub",1]; rb_target <- RCOres$TARG[,"RiskBudget",1]
+  # (ocr <- OptimizationResultsCharacteristics(rw,cov,lb,ub,set,rb_target)
+
+}
+
+# Optimization Functions
+# RCO: Risk Contribution Optimization
+f.runRCO <- function(targ,set,cov, MaxAttempts = 2){
+  # Description
+  #   This function is the optimizer
+
+  # Function used:
+  # 1. f.matchCOVtoTickers
+  # 2. f.setOptfunctions
+  # 3. f.getWeightRange
+  # 4. OptimizationResultsCharacteristics
+
+  # Dependencies:
+  #   1. require("RODBC")
+  #   2. library(nloptr)
+  #   3. require("reshape")
+  #   4. library(dplyr)
+  #   5. library(stats)
+
+  #inputs
+  #targ: table with conviction,ub,lb,tradeability and riskbudget per security
+  #set:  RCO-Optimization settings. Must be a row of data.frame
+  #COV:  Covariance matrix (must fit to tickers in targ! )
+
+  #checks
+  stopifnot(all(targ$RiskBudget >= 0))#check if all risk budgets > 0
+  stopifnot(all.equal(sum(targ[,"RiskBudget"]),1))#check if defined risk budget sums up to 100%
+  stopifnot(colnames(targ) %in% c("conviction","RiskBudget","lb","ub","Ticker","tradeability"))
+  stopifnot(is.data.frame(set),nrow(set)==1)
+  #TODO check class
+  set$MaxRelWeight <- f.as.numeric.factor(set$MaxRelWeight)
+  set$algo <- as.character(set$algo)
+  set$Ix_eq_Cash <- as.character(set$Ix_eq_Cash)
+  set$IndexFlex <- as.character(set$IndexFlex)
+  set$LowConvictionExitInDays <- f.as.numeric.factor(set$LowConvictionExitInDays)
+  set$ConvictionGroups <- f.as.numeric.factor(set$ConvictionGroups)
+  set$CashTolerance <- f.as.numeric.factor(set$CashTolerance)
+  set$LeverageTolerance <- f.as.numeric.factor(set$LeverageTolerance)
+  set$NetInvLambda <- f.as.numeric.factor(set$NetInvLambda)
+  set$TargetTE <- f.as.numeric.factor(set$TargetTE)
+  set$ShortIndexWithOptimCash <- as.character(set$ShortIndexWithOptimCash)
+  set$SoftNetInvConstraint <- as.logical(set$SoftNetInvConstraint)
+  set$Trials <- f.as.numeric.factor(set$Trials)
+  set$xtol_rel <- f.as.numeric.factor(set$xtol_rel)
+  print("here further checks if risk budgets are reasonably distributed would be useful!")
+  #all risk budgets positive
+  #range of individual risks, outliers
+
+  #define target
+  sec_nr <- nrow(targ)
+  rw <- rep(0,times=sec_nr) #relative weights
+
+  cov <- f.matchCOVtoTickers (Tickers = rownames(targ), COV = cov)
+  if(grepl("Crncy",rownames(targ)[1]))    #turn sign of bm-index to reflect a long index position (needed for sum to 0 constraint!)
+  {
+    cov[1,] <- -1*cov[1,]
+    cov[,1] <- -1*cov[,1]
+    print("The sign of the first row in the Covariance Matrix was switched, Crncy-tickers are supposed to reflect negative index performance ")
+  }
+
+  # #check for invertability of cov
+  # ipak("matrixcalc")
+  # print(paste("the cov is invertible is", is.singular.matrix(as.matrix(cov) )))
+
+
+  ###get the target function and nlcon according to Settings
+  optFun <-  f.setOptfunctions(set)
+
+  #save actual index weight before adj. lower bounds
+  w_range <- f.getWeightRange(lb = targ$lb,
+                              ub = targ$ub,
+                              conviction = targ$conviction,
+                              tradeability = targ$tradeability,
+                              MaxRelWeight = set$MaxRelWeight,
+                              LowConvictionExitInDays = set$LowConvictionExitInDays,
+                              ConvictionGroups = set$ConvictionGroups)
+
+  targ$lb. <- w_range$w_min
+  targ$ub. <- w_range$w_max
+
+  #option settings
+  local_opts <- list( "algorithm" = "NLOPT_LD_SLSQP",
+                      "xtol_rel" = 1.0e-7 )
+
+  opts <- list("algorithm" = as.character(set$algo),
+               "maxeval" = as.numeric(set$Trials),
+               "print_level" = 0,
+               "xtol_rel" = set$xtol_rel,
+               "xtol_abs" = 10 ^ -7,
+               local_opts = local_opts)#,check_derivatives=TRUE)      #algortihms tried: "NLOPT_GN_ISRES",
+  #algorithms used and no result:NLOPT_LN_AUGLAG,NLOPT_GN_DIRECT_L_RAND; algorithms to try: NLOPT_GNL_DIRECT_NOSCAL, NLOPT_GN_DIRECT_L_NOSCAL, and NLOPT_GN_DIRECT_L_RAND_NOSCAL,NLOPT_GN_ORIG_DIRECT and NLOPT_GN_ORIG_DIRECT_L,
+
+  dir <- sign(targ$conviction) #direction of conviction (where active)
+
+  #assert that TickDet still fits COV!
+  stopifnot(rownames(targ) == as.character(row.names(cov)))
+
+  #print(paste("Cash treated as index asset with risk budget ",round(targ$RiskBudget[1]*100,2), "% and direction ",sign(targ$conviction[1])),sep="")
+
+  x0 <- pmax(pmin(targ$ub., targ$RiskBudget*dir),targ$lb.)
+  A <- -diag(dir) #define desired bet directions
+  #lb_reset=rep(-10,nrow(targ))#lower bounds are seperately specified in side constraint! -> set to very low value for the function!
+
+  # ipak("nloptr")
+
+  runAnotherOptIteration <- TRUE
+  attempt <- 1
+  while(runAnotherOptIteration)
+  {
+    print(paste("start  attempt:",attempt,"with nloptr"))
+    if(set$SoftNetInvConstraint){
+      calctime <- system.time(opt_output <-
+                                nloptr::nloptr(x0 = as.matrix(x0),
+                                       eval_f = optFun$ftarget,
+                                       #eval_grad_f = fgrad,
+                                       lb = as.matrix(targ$lb.),
+                                       ub = as.matrix(targ$ub.),
+                                       # eval_g_eq = nlcon_eq,   #nlcon_eq not required
+                                       eval_g_ineq = optFun$nlcon_ineq,
+                                       opts = opts,
+                                       target_te = as.matrix(set$TargetTE),
+                                       A = A,
+                                       CashTolerance = set$CashTolerance,
+                                       LeverageTolerance = set$LeverageTolerance,
+                                       COVAR = as.matrix(cov),
+                                       rb_a = as.matrix(targ$RiskBudget),
+                                       NetInvLambda = set$NetInvLambda
+                                ))["elapsed"]
+    }else{
+      #nlcon_eq required!
+      calctime <- system.time(opt_output <-
+                                nloptr::nloptr(x0=as.matrix(x0),
+                                       eval_f = optFun$ftarget,
+                                       #eval_grad_f = fgrad,
+                                       lb = as.matrix(targ$lb.),
+                                       ub = as.matrix(targ$ub.),
+                                       eval_g_eq = optFun$nlcon_eq, #nlcon_eq required!
+                                       eval_g_ineq = optFun$nlcon_ineq,
+                                       opts = opts,
+                                       target_te = as.matrix(set$TargetTE),
+                                       A = A,
+                                       CashTolerance = set$CashTolerance,
+                                       LeverageTolerance = set$LeverageTolerance,
+                                       COVAR = as.matrix(cov),
+                                       rb_a = as.matrix(targ$RiskBudget),
+                                       NetInvLambda = set$NetInvLambda
+                                ))["elapsed"]
+    }
+    attempt <- attempt+1
+    print(opt_output)
+
+    ####check optimization quality####
+    #check direction constraint (should be all <=0)
+    injuries <- -A %*% opt_output$solution < 0
+
+    if(sum(injuries) > 1 || opt_output$status %in% c(-1,-2,-3,-4) || abs(opt_output$objective) == Inf )  {
+      validResult <- FALSE
+      print("optimization failed or direction constrained violated or target function Inf ,invalid result. Solution reset to NA") #no stop as loop should continue!!!
+      rw <- pw <- rep(NA, length(rw))
+
+      # store results in optim_details
+      optim_details <- c(Calculated = as.character(Sys.time()),
+                         NA,
+                         NA,
+                         NA,
+                         NA,
+                         NA,
+                         opt_output$objective,
+                         opt_output$iterations,
+                         calctime,
+                         NA,
+                         validResult = validResult)
+
+      if(opt_output$status == -4 || opt_output$status == -1 ){
+        runAnotherOptIteration <- ifelse(attempt <= MaxAttempts,TRUE,FALSE)
+        set$TargetTE <- set$TargetTE+(stats::runif(1)-0.5)*10^-6
+        print(paste("The ",attempt-1,". try resulted in Error -4 or -1!",
+                    ifelse(runAnotherOptIteration,paste("Execute a ",attempt,". time with a slightly different TE-target of: ", set$TargetTE),
+                           paste("No results found after attempt",attempt))))
+      }else{runAnotherOptIteration <- FALSE}
+
+    }else{
+      #valid calculation: get optimization results characteristics and store the results
+      validResult <- TRUE ;
+      runAnotherOptIteration <- FALSE
+      iterations <- opt_output$iterations
+      rw <-  opt_output$solution
+      pw <- rw - targ$lb    #portfolioweights. checks needed???
+      orc <- OptimizationResultsCharacteristics(rw = rw,
+                                                cov = cov,
+                                                lb = targ$lb,
+                                                ub = targ$ub,
+                                                set = set,
+                                                rb_target = targ$RiskBudget) #rw=rw;COV=COV;lb=targ$lb.;ub=targ$ub;set=set
+
+      # store results in optim_details
+      optim_details <- c(Calculated = as.character(Sys.time()),
+                         orc$te - set$TargetTE,
+                         orc$const_hit_pct,
+                         orc$NetInvestment,
+                         orc$p.beta,
+                         orc$IndexPosition,
+                         opt_output$objective,
+                         iterations,
+                         calctime,
+                         orc$total_rb_dev,
+                         validResult = validResult)
+
+      #add checks on result!!!
+      TEdeviationTolerance <- 0.0001
+
+      if(abs(orc$te - set$TargetTE) < TEdeviationTolerance)
+      {
+        cat(paste("The Risk-Contribution-Optimization was successful on attempt ",attempt-1), " and the resulting weights are:", sep="\n")
+        print(data.frame(conviction=targ$conviction,rw=rw,RiskContr=orc$rc))
+      }else{ cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",orc$te - set$TargetTE, " and the resulting weights are:", sep="\n")
+        print(data.frame(conviction=targ$conviction,rw=rw,RiskContr=orc$rc))
+
+      }
+    }
+  }
+  return(list(rw = rw,
+              pw = pw,
+              optim_details = optim_details))
+}
+
+runRCOFromAPS <- function(portfolioName,
+                          calculation_date,
+                          covMaSetID,
+                          RCOSetID,
+                          isReal = FALSE,
+                          calc_method){
+
+
+
+  # Description
+  #   The function executes the opritizer call with
+  #   correct parameters and writes oprimized weights to DB
+
+  # Dependencies:
+  #   1. require("RODBC")
+  #   2. library(nloptr)
+  #   3. require("reshape")
+  #   4. library(dplyr)
+
+  # Functions:
+  #   1. FAFunc.GetDB()     [external*]
+  #   2. getTargetTable     [internal]
+  #   3. getRCOSetSettings  [internal]
+  #   4. f.getCovFromSQL    [external]
+  #   5. f.runRCO           [external]
+  #   6. f.writeRCOresToSQL [external]
+
+  print("The process has been started")
+
+  # Download [external] functions
+  source("G:/FAP/Equities/Betsizing/Code/RCO.R")
+  # debug(f.runRCO)
+
+  connection <- FAFunc.GetDB()
+
+  # Get lower and upper bounds # tradability const
+  target_table <- getTargetTable(portfolioName = portfolioName,
+                                 calculation_date = calculation_date,
+                                 isReal = isReal,
+                                 connection = connection)
+
+  if(nrow(target_table) > 0){
+    print("GOOD: target table is NOT empty")
+    print(target_table, row.names=TRUE, digits=5)
+  }else{
+    print("BAD: target table is empty")
+  }
+  #check if boundaries are compatible with the direction convictions: ADDED!
+  stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
+
+
+
+
+  RCO_settings_df <- getRCOSetSettings(RCOSetID = RCOSetID,
+                                       connection = connection)
+  if(length(RCO_settings_df) > 0){
+    print("GOOD: RCO settings table is NOT empty")
+    print(RCO_settings_df, row.names=TRUE)
+  }else{
+    print("BAD: RCO settings table is empty")
+  }
+
+  # TODO  use APS package
+  covMa <- f.getCovFromSQL(RunID = covMaSetID,
+                           CalculationMethod = calc_method,
+                           WideOrLong = "wide")
+
+  if(nrow(covMa) > 0){
+    print("GOOD: covMa is NOT empty")
+  }else{
+    print("BAD: covMa is empty")
+  }
+
+  # check dimensions -> delete if not equal to expected value
+
+  # reduce target_table on those with an active conviction
+  opt_weights_relative <- rep(0,length=nrow((target_table)))
+  sec_a <- target_table$conviction != 0
+  target_table_a <- target_table[sec_a,]
+
+  # The function should calculate optimal weights and update optimal weights
+  tryCatch(
+    { # Try section
+
+      # TODO first copy the function here, second use APS package
+      RCOres <- f.runRCO(targ = target_table_a,
+                         set = RCO_settings_df,
+                         cov = covMa)
+    }, error = function(e){
+      print(paste0("runRCO stopped with an error: ", e))
+      stop("runRCO stopped with an error: ", e)
+    }
+  )
+
+  #check if optimization returned a valid result
+  if(as.logical(RCOres$optim_details["validResult"]) == FALSE) {stop("no valid result found in optimization")}
+
+
+
+  # Optimal weights are updated in SQL table
+  opt_weights_relative[sec_a] <- RCOres$rw
+  opt_weights_portfolio <- -target_table$lb + opt_weights_relative
+  calcdatetime <- RCOres$optim_details["Calculated"]
+  names(opt_weights_relative) <- names(opt_weights_portfolio) <- rownames(target_table)
+
+  # create upload df
+  covMaSetID <- as.integer(covMaSetID)
+  RCOSetID <- as.integer(RCOSetID)
+
+  print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
+
+  f.writeRCOresToSQL(res_rel = opt_weights_relative*100,#sql-table stores values in Percentage
+                     res_p = opt_weights_portfolio*100, #sql-table stores values in Percentage
+                     portfolio = portfolioName,
+                     covID = covMaSetID,
+                     setID = RCOSetID,
+                     calcdatetime = calcdatetime)
+  # Close connection
+  RODBC::odbcClose(connection)
+}
 #
 #
 #
@@ -619,356 +1323,9 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 #   return(RCOres)
 # }
 #
-# ####Optimization Functions##############
-# ####!RCO: Risk Contribution Optimization :RCO!#####
-# f.runRCO <- function(targ,set,cov){
-#   # Description
-#   #   This function is the optimizer
+
 #
-#   # Dependencies:
-#   #   1. require("RODBC")
-#   #   2. library(nloptr)
-#   #   3. require("reshape")
-#   #   4. library(dplyr)
-#
-#   #inputs
-#   #targ: table with conviction,ub,lb,tradeability and riskbudget per security
-#   #set:  RCO-Optimization settings. Must be a row of data.frame
-#   #COV:  Covariance matrix (must fit to tickers in targ! )
-#
-#   print("f.runRCO started")
-#
-#   #checks
-#   stopifnot(all(targ$RiskBudget >= 0))#check if all risk budgets > 0
-#   stopifnot(all.equal(sum(targ[,"RiskBudget"]),1))#check if defined risk budget sums up to 100%
-#   stopifnot(colnames(targ) %in% c("conviction","RiskBudget","lb","ub","Ticker","tradeability"))
-#   stopifnot(is.data.frame(set),nrow(set)==1)
-#   #TODO check class
-#   set$MaxRelWeight <- as.numeric.factor(set$MaxRelWeight)
-#   set$algo <- as.character(set$algo)
-#   set$Ix_eq_Cash <- as.character(set$Ix_eq_Cash)
-#   set$IndexFlex <- as.character(set$IndexFlex)
-#   set$LowConvictionExitInDays <- as.numeric.factor(set$LowConvictionExitInDays)
-#   set$ConvictionGroups <- as.numeric.factor(set$ConvictionGroups)
-#   set$CashTolerance <- as.numeric.factor(set$CashTolerance)
-#   set$LeverageTolerance <- as.numeric.factor(set$LeverageTolerance)
-#   set$NetInvLambda <- as.numeric.factor(set$NetInvLambda)
-#   set$TargetTE <- as.numeric.factor(set$TargetTE)
-#   set$ShortIndexWithOptimCash <- as.character(set$ShortIndexWithOptimCash)
-#   set$SoftNetInvConstraint <- as.logical(set$SoftNetInvConstraint)
-#   set$Trials <- as.numeric.factor(set$Trials)
-#   set$xtol_rel <- as.numeric.factor(set$xtol_rel)
-#   print("here further checks if risk budgets are reasonably distributed would be useful!")
-#   #all risk budgets positive
-#   #range of individual risks, outliers
-#
-#   #define target
-#   sec_nr <- nrow(targ)
-#   rw <- rep(0,times=sec_nr) #relative weights
-#
-#   cov <- f.matchCOVtoTickers (Tickers = rownames(targ), COV = cov)
-#   if(grepl("Crncy",rownames(targ)[1]))    #turn sign of bm-index to reflect a long index position (needed for sum to 0 constraint!)
-#   {
-#     cov[1,] <- -1*cov[1,]
-#     cov[,1] <- -1*cov[,1]
-#     print("The sign of the first row in the Covariance Matrix was switched, Crncy-tickers are supposed to reflect negative index performance ")
-#   }
-#
-#   # #check for invertability of cov
-#   # ipak("matrixcalc")
-#   # print(paste("the cov is invertible is", is.singular.matrix(as.matrix(cov) )))
-#
-#
-#   ###get the target function and nlcon according to Settings
-#   optFun <-  f.setOptfunctions(set)
-#
-#   #save actual index weight before adj. lower bounds
-#   w_range <- f.getWeightRange(lb = targ$lb,
-#                               ub = targ$ub,
-#                               conviction = targ$conviction,
-#                               tradeability = targ$tradeability,
-#                               MaxRelWeight = set$MaxRelWeight,
-#                               LowConvictionExitInDays = set$LowConvictionExitInDays,
-#                               ConvictionGroups = set$ConvictionGroups)
-#
-#   targ$lb. <- w_range$w_min
-#   targ$ub. <- w_range$w_max
-#
-#   #option settings
-#   local_opts <- list( "algorithm" = "NLOPT_LD_SLSQP",
-#                       "xtol_rel" = 1.0e-7 )
-#
-#   opts <- list("algorithm" = as.character(set$algo),
-#                "maxeval" = as.numeric(set$Trials),
-#                "print_level" = 0,
-#                "xtol_rel" = set$xtol_rel,
-#                "xtol_abs" = 10 ^ -7,
-#                local_opts = local_opts)#,check_derivatives=TRUE)      #algortihms tried: "NLOPT_GN_ISRES",
-#   #algorithms used and no result:NLOPT_LN_AUGLAG,NLOPT_GN_DIRECT_L_RAND; algorithms to try: NLOPT_GNL_DIRECT_NOSCAL, NLOPT_GN_DIRECT_L_NOSCAL, and NLOPT_GN_DIRECT_L_RAND_NOSCAL,NLOPT_GN_ORIG_DIRECT and NLOPT_GN_ORIG_DIRECT_L,
-#
-#   dir <- sign(targ$conviction) #direction of conviction (where active)
-#
-#   #assert that TickDet still fits COV!
-#   stopifnot(rownames(targ) == as.character(row.names(cov)))
-#
-#   #print(paste("Cash treated as index asset with risk budget ",round(targ$RiskBudget[1]*100,2), "% and direction ",sign(targ$conviction[1])),sep="")
-#
-#   x0 <- pmax(pmin(targ$ub., targ$RiskBudget*dir),targ$lb.)
-#   A <- -diag(dir) #define desired bet directions
-#   #lb_reset=rep(-10,nrow(targ))#lower bounds are seperately specified in side constraint! -> set to very low value for the function!
-#
-#   ipak("nloptr")
-#
-#   runAnotherOptIteration <- TRUE
-#   attempt <- 1
-#   while(runAnotherOptIteration)
-#   {
-#     print(paste("start  attempt:",attempt,"with nloptr"))
-#     if(set$SoftNetInvConstraint){
-#       calctime <- system.time(opt_output <-
-#                                 nloptr(x0 = as.matrix(x0),
-#                                        eval_f = optFun$ftarget,
-#                                        #eval_grad_f = fgrad,
-#                                        lb = as.matrix(targ$lb.),
-#                                        ub = as.matrix(targ$ub.),
-#                                        # eval_g_eq = nlcon_eq,   #nlcon_eq not required
-#                                        eval_g_ineq = optFun$nlcon_ineq,
-#                                        opts = opts,
-#                                        target_te = as.matrix(set$TargetTE),
-#                                        A = A,
-#                                        CashTolerance = set$CashTolerance,
-#                                        LeverageTolerance = set$LeverageTolerance,
-#                                        COVAR = as.matrix(cov),
-#                                        rb_a = as.matrix(targ$RiskBudget),
-#                                        NetInvLambda = set$NetInvLambda
-#                                 ))["elapsed"]
-#     }else{
-#       #nlcon_eq required!
-#       calctime <- system.time(opt_output <-
-#                                 nloptr(x0=as.matrix(x0),
-#                                        eval_f = optFun$ftarget,
-#                                        #eval_grad_f = fgrad,
-#                                        lb = as.matrix(targ$lb.),
-#                                        ub = as.matrix(targ$ub.),
-#                                        eval_g_eq = optFun$nlcon_eq, #nlcon_eq required!
-#                                        eval_g_ineq = optFun$nlcon_ineq,
-#                                        opts = opts,
-#                                        target_te = as.matrix(set$TargetTE),
-#                                        A = A,
-#                                        CashTolerance = set$CashTolerance,
-#                                        LeverageTolerance = set$LeverageTolerance,
-#                                        COVAR = as.matrix(cov),
-#                                        rb_a = as.matrix(targ$RiskBudget),
-#                                        NetInvLambda = set$NetInvLambda
-#                                 ))["elapsed"]
-#     }
-#     attempt <- attempt+1
-#     print(opt_output)
-#
-#     ####check optimization quality####
-#     #check direction constraint (should be all <=0)
-#     injuries <- -A %*% opt_output$solution < 0
-#
-#     if(sum(injuries) > 1 || opt_output$status %in% c(-1,-2,-3,-4) || abs(opt_output$objective) == Inf )  {
-#       validResult <- FALSE
-#       print("optimization failed or direction constrained violated or target function Inf ,invalid result. Solution reset to NA") #no stop as loop should continue!!!
-#       rw <- pw <- rep(NA, length(rw))
-#
-#       # store results in optim_details
-#       optim_details <- c(Calculated = as.character(Sys.time()),
-#                          NA,
-#                          NA,
-#                          NA,
-#                          NA,
-#                          NA,
-#                          opt_output$objective,
-#                          opt_output$iterations,
-#                          calctime,
-#                          NA,
-#                          validResult = validResult)
-#
-#       if(opt_output$status == -4 || opt_output$status == -1 ){
-#         runAnotherOptIteration <- ifelse(attempt <= MaxAttempts,TRUE,FALSE)
-#         set$TargetTE <- set$TargetTE+(runif(1)-0.5)*10^-6
-#         print(paste("The ",attempt-1,". try resulted in Error -4 or -1!",
-#                     ifelse(runAnotherOptIteration,paste("Execute a ",attempt,". time with a slightly different TE-target of: ", set$TargetTE),
-#                            paste("No results found after attempt",attempt))))
-#       }else{runAnotherOptIteration <- FALSE}
-#
-#     }else{
-#       #valid calculation: get optimization results characteristics and store the results
-#       validResult <- TRUE ;
-#       runAnotherOptIteration <- FALSE
-#       iterations <- opt_output$iterations
-#       rw <-  opt_output$solution
-#       pw <- rw - targ$lb    #portfolioweights. checks needed???
-#       orc <- OptimizationResultsCharacteristics(rw = rw,
-#                                                 cov = cov,
-#                                                 lb = targ$lb,
-#                                                 ub = targ$ub,
-#                                                 set = set,
-#                                                 rb_target = targ$RiskBudget) #rw=rw;COV=COV;lb=targ$lb.;ub=targ$ub;set=set
-#
-#       # store results in optim_details
-#       optim_details <- c(Calculated = as.character(Sys.time()),
-#                          orc$te - set$TargetTE,
-#                          orc$const_hit_pct,
-#                          orc$NetInvestment,
-#                          orc$p.beta,
-#                          orc$IndexPosition,
-#                          opt_output$objective,
-#                          iterations,
-#                          calctime,
-#                          orc$total_rb_dev,
-#                          validResult = validResult)
-#
-#       #add checks on result!!!
-#       TEdeviationTolerance <- 0.0001
-#
-#       if(abs(orc$te - set$TargetTE) < TEdeviationTolerance)
-#       {
-#         cat(paste("The Risk-Contribution-Optimization was successful on attempt ",attempt-1), " and the resulting weights are:", sep="\n")
-#         print(data.frame(conviction=targ$conviction,rw=rw,RiskContr=orc$rc))
-#       }else{ cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",orc$te - set$TargetTE, " and the resulting weights are:", sep="\n")
-#         print(data.frame(conviction=targ$conviction,rw=rw,RiskContr=orc$rc))
-#
-#       }
-#     }
-#   }
-#   return(list(rw = rw,
-#               pw = pw,
-#               optim_details = optim_details))
-#
-#
-# }
-#
-# #get the proper functions depending on settings!
-# f.setOptfunctions <- function(set)
-# {
-#   # Dependencies
-#   #   NO
-#
-#   #target function
-#   if(set$IndexFlex == TRUE)
-#   {
-#     ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
-#     {
-#       return(list("objective" =  as.matrix(-abs(c(0,t(rb_a[-1]))) %*% log(abs(x)))+ NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
-#                   "gradient"  = diag(A)*as.matrix(c(0.00,abs(rb_a[-1])) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
-#       ))
-#     }
-#   } else{
-#     ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
-#     {
-#       return(list("objective" =  as.matrix(-abs(t(rb_a)) %*% log(abs(x))) + NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
-#                   "gradient"  = diag(A)*as.matrix(abs(rb_a) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
-#       ))
-#     }
-#   }
-#
-#   #nlcons
-#   stopifnot(set$Ix_eq_Cash==FALSE || (set$Ix_eq_Cash==TRUE && set$SoftNetInvConstraint==FALSE && set$IndexFlex==FALSE)) #check if nlcon-settings are allowed
-#
-#   #set the right nlcon
-#   if(set$SoftNetInvConstraint == TRUE)
-#   {
-#     #nlcon depend on treatment of index asset
-#     if(set$IndexFlex==TRUE)
-#     {
-#       print(paste("OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range"))
-#       nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda)
-#       {#OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range (Index still has to impact TE, just in TargetFunction disregarded!)
-#         return(list("constraints"= c(
-#           diag(c(0,diag(A[-1,-1]))) %*% w                                #direction constraint
-#           ,sqrt(t(w) %*% COVAR %*% w) - target_te #TE-constraint
-#           ,sum(w) - LeverageTolerance      #max postive NetInvestment (Leverage)
-#           ,-sum(w) - CashTolerance          #max negative NetInvestemnt (Cash)
-#           ,w[1] * (COVAR %*% w)[1] / as.numeric(t(w) %*% COVAR %*% w) - rb_a[1]#limit risk contribution of first (index position's)
-#         ),
-#         "jacobian" = rbind(
-#           diag(c(0,diag(A[-1,-1])))                                    #gradient direction constraint
-#           ,t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))  #gradient TE-constraint
-#           ,t(rep(1,length(w)))                 #gradient: no leverage constraint
-#           ,t(rep(-1,length(w)))                #gradient max Short position
-#           ,t(rbind( (((COVAR %*% w)[1] + w[1]*COVAR[1,1])* (t(w)%*%COVAR%*%w) - 2*w[1]*COVAR[1,]%*%w*(COVAR%*%w)[1]) / (t(w) %*% COVAR %*% w)^2, #first row derivative after w[1]
-#                     as.numeric(w[1]/(t(w) %*% COVAR %*% w))*COVAR[1,-1]                                                    #row 2:n derivatives after w[2:n]   (1)
-#                     - as.numeric((2*w[1]*(COVAR[1,]%*% w))/(t(w) %*% COVAR %*% w)^2)*COVAR[-1,]%*%w )))                    #row 2:n derivatives after w[2:n]   (2)
-#         )
-#         )
-#       }
-#
-#       #here still make an extension for Ix_eq_Cash (cond. on parameter!!!). A bit tough to adjust the formula!!!
-#       #else if set$Ix_eq_Cash: .....
-#
-#     } else {
-#       #"OPTIMIZE: nlcon keeps NetInvestment within range, ix as normal asset"
-#       print(paste("OPTIMIZE: nlcon keeps NetInvestment within range, ix as normal asset"))
-#       nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
-#         return(list(
-#           "constraints"= c(as.matrix(A %*% w)  #direction constraints
-#                            ,c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te)) #TE-constraint
-#                            , sum(w) - LeverageTolerance               #allow for 25Bp Cash
-#                            ,-sum(w) - CashTolerance                  #max Short position leverage constraint (s.t. Tolerance)
-#           ),
-#           "jacobian" = rbind(A
-#                              ,as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))#t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))
-#                              ,t(rep(1,length(w)) )                 #gradient: no leverage constraint
-#                              ,t(rep(-1,length(w)))                 #gradient max Short position
-#           )
-#         ))
-#       }
-#     }
-#
-#   } else {
-#     #leverage control happens in equality constrained!
-#
-#     # if(set$CashTolerance != 0 ) {print(paste("Currently this case is not feasible as here is the Non-SoftLeverage part where CashTolerance must =0!)
-#     #                                          >>move to Soft-Leverage part to become more meaningful! / another Parameter with cash-target!"))}
-#     #         if(set$Ix_eq_Cash)#equality constrained depends on IX_eq_Cash
-#     #         {
-#     #           stopifnot(set$algo %in% c("NLOPT_GN_ISRES","NLOPT_LN_AUGLAG_EQ"))
-#     #           nlcon_eq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance){
-#     #           return(list(
-#     #           "constraints" = -sum(w[-1]) - CashTolerance,#replace CashTolerance with CashRequirement!!!
-#     #           "jacobian"= c(0,rep(-1,(length(w)-1)))
-#     #           ))
-#     #
-#     #         }
-#     #       }else{ }
-#     print(paste("OPTIMIZE: eqcon keeps NetInvestment == 0"))
-#     nlcon_eq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
-#       #"OPTIMIZE: eqcon keeps NetInvestment == 0"
-#       return(list(
-#         "constraints" = -sum(w),
-#         "jacobian"= rep(-1,length(w))
-#       ))
-#     }
-#
-#     print(paste("Loop",k,"OPTIMIZE: ix as normal asset"))
-#     nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
-#       return(list(
-#         "constraints"= c(as.matrix(A %*% w)  #direction constraints
-#                          ,c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te)) #TE-constraint
-#                          #  , sum(w) - CashTolerance                   #no leverage constraint (s.t. Tolerance)
-#                          #   ,-sum(w) - CashTolerance                  #max Short position leverage constraint (s.t. Tolerance)
-#         ),
-#         "jacobian" = rbind(A
-#                            ,as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))#t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))
-#                            # ,t(rep(1,length(w)) )                 #gradient: no leverage constraint
-#                            # ,t(rep(-1,length(w)))                 #gradient max Short position
-#         )
-#       ))
-#     }
-#
-#   }
-#
-#   #return ftarget and nlcon
-#   if(exists("nlcon_eq"))
-#   {return(list(ftarget=ftarget,nlcon_eq=nlcon_eq,nlcon_ineq=nlcon_ineq))}else{
-#     return(list(ftarget=ftarget,nlcon_ineq=nlcon_ineq))
-#   }
-#
-# }
+
 #
 # #########Funktion um die Outputs der verschiedenen Loops zu plotten####
 # f.compare_runs<-function(xaxis,yaxis,plotlabels=NA,RCOres)#x: from rownames(SET),y from rownames(optim_details),labels row of SET
@@ -1168,47 +1525,7 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 #
 # }
 #
-# #####Optimization Results Characteristic
-# OptimizationResultsCharacteristics <- function(rw,cov,lb,ub,set,rb_target)
-# {
-#   #Replicate index short on the index title if desired to do so
-#   IndexPosition <- rw[1]
-#   NetInvestment <- sum(rw)
-#   w_bm <- -lb[-1]
-#   sec_nr <- length(rw)
-#
-#   #calculate weights to implement
-#   rw_impl <- ImplIndexPosition(rw,w_bm)
-#
-#   #evaluate boundaries injured
-#   lb_inj<-ifelse(rw_impl < lb,1,0)
-#   ub_inj<- ifelse(rw_impl > ub,1,0)
-#   const_hit <- ifelse(lb_inj + ub_inj>0,1,0)
-#   const_hit_pct <- sum(const_hit)/sec_nr
-#
-#   #tracking error
-#   te<- as.numeric(sqrt(t(rw) %*% as.matrix(cov) %*% rw))
-#
-#   if(round(te,4) != round(as.numeric(sqrt(t(rw_impl) %*% as.matrix(cov) %*% rw_impl)),4)   ) #te portfolio needs to be unchanged by
-#   {message("portfolio risk neutrality to implementation of index position in portfolio violated. Check LowerBounds and optimization quality!!!!")}
-#   #risk contributions
-#   rc <- get_rcb(weight=rw,cov=cov)
-#
-#   #sum of rc actual - target
-#   total_rb_dev <- sum(abs(rc-rb_target))
-#
-#
-#   #portfolio beta
-#   p.beta <- t(rw) %*% cov[,1]/cov[1,1]
-#   return(list(IndexPosition=IndexPosition,NetInvestment=NetInvestment,rw_impl=rw_impl,te=te,
-#               const_hit=const_hit,const_hit_pct=const_hit_pct,
-#               p.beta=p.beta,rc=rc,total_rb_dev=total_rb_dev))
-#
-#   #example (needs an existing result in RCOres-form)
-#   # rw <- RCOres$RW[,1] ; cov <- RCOres$COV[,,1]; lb <- RCOres$TARG[,"lb",1]; ub <- RCOres$TARG[,"ub",1]; rb_target <- RCOres$TARG[,"RiskBudget",1]
-#   # (ocr <- OptimizationResultsCharacteristics(rw,cov,lb,ub,set,rb_target)
-#
-# }
+
 #
 # ###compare RCOres in ggplot
 # compareRCOruns <- function(RCOres,xaxis,yaxis,colby,pointat,Jitter=0.5,whichCov="used for opt")
@@ -1260,7 +1577,7 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 #
 #   library(ggplot2)
 #   sz <- rep(3,nrow(OPTRES));sz[pointat]=10;
-#   OPTRES[,yaxis] <- as.numeric.factor(OPTRES[,yaxis])
+#   OPTRES[,yaxis] <- f.as.numeric.factor(OPTRES[,yaxis])
 #   ggplot(OPTRES,aes(y = get(yaxis), x = jitter(get(xaxis),factor=Jitter), color = DiffSet,group = DiffSet,fill= DiffSet)) +
 #     geom_line(size = 0.5) + geom_point(size = sz, shape=pmin(sz+18,23)) +
 #     theme(legend.position="right",legend.direction="vertical") +
@@ -1329,298 +1646,20 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 # }
 #
 #
-# #get risk contributions of active weights
-# get_rcb <- function(weight,cov)
-# {
-#   stopifnot(is.vector(weight)==1 && length(weight)==nrow(cov) && nrow(cov)==ncol(cov))
-#   VAR <- as.numeric(t(weight) %*% as.matrix(cov) %*% weight)
-#   rcb <- weight*as.matrix(cov) %*% weight
-#   rcb <- rcb/VAR
-#
-#   #example (needs an existing result in RCOres-form)
-#   # weight <- RCOres$RW[,1]
-#   # cov <- RCOres$COV[,,1]
-#   #(rcb <- get_rcb(weight,cov))
-# }
-#
-# #implement short-index in portfolio
-# ImplIndexPosition <- function(w,w_bm,ZeroNetInvestment=FALSE)
-# {
-#   stopifnot(length(w)-1 == length(w_bm)) #w includes index position, w_bm only the index constituents!
-#   #check bm-weights sum to 1
-#   if(round(sum(w_bm),3)!= 1) #plausibility check: lb show benchmark-weight?
-#   {message(paste("the lower bounds provided do not sum to 1, but to:",sum(w_bm)," - correct BM-weights needed to make a fully correct index replication"))
-#     print("the w_bm are normalized that their sum adds to 1 - might lead to problems in implementation, leads to only indicative target weights")
-#     w_bm <- w_bm/sum(w_bm)
-#   }
-#
-#   #replicate index position of the first asset in portfolio
-#   #print("first asset assumed as index asset")
-#   if(ZeroNetInvestment==TRUE)
-#   {
-#     print("attention: this is changing the risk structure of the portfolio. probably unintended!")
-#     w1. <- w[1]-sum(w) #assume overinvestment = index!
-#     w[-1] <- w[-1]+w1.*w_bm
-#   }else
-#   {
-#     w[-1] <- w[-1]+w[1]*w_bm
-#   }
-#   w[1] <- 0
-#   return(w)
-#
-#   #example (needs an existing result in RCOres-form)
-#   # w <- RCOres$RW[,1];w_bm <- -RCOres$TARG[-1,"lb",1];ZeroNetInvestment <- FALSE
-#   #ImplIndexPosition(w,w_bm)
-#
-#
-#
-#
-# }
+
+
 #
 # #short tickers for printing in plots
 # .pT <- function(x,start=0,stop=4){sapply(x,substr,start,stop)}
 #
-# #get range for weights of each ticker
-# f.getWeightRange <- function(lb, ub, conviction, tradeability, MaxRelWeight, LowConvictionExitInDays = 10, ConvictionGroups = 1 )
-# {
-#
-#   ConvictionGroups <- ConvictionGroups + 1
-#   ipak("dplyr")
-#   groupedConviction <-  ntile(abs(conviction),ConvictionGroups)-1
-#   ConvictionDegree <- pmax(1,groupedConviction)  #-1 as usually group without a bet is last, still ensure that factor is at least 1!
-#
-#   #plot(jitter(conviction),ConvictionDegree)
-#
-#   t_restrict <- LowConvictionExitInDays / tradeability * ConvictionDegree *10*10^(-4)  #tradeability quoted in days/10bp
-#
-#   w_min <- pmax(lb,-t_restrict,-MaxRelWeight)
-#   w_max <- pmin(ub,t_restrict,MaxRelWeight)
-#
-#   return(list(w_min=w_min,w_max=w_max,ConvictionDegree=ConvictionDegree))
-#
-#   #examples
-#   #t <- as.data.frame(RCOres$TARG[,,1]); lb <- t$lb;ub <- t$ub;conviction <- t$conviction;tr <- t$tradeability
-#   #g1 <- f.getWeightRange(lb,ub,conviction,tr,0.1,LowConvictionExitInDays = 20,ConvictionGroups=7)
-#   #cbind(rownames(targ),g1$w_min,g1$w_max,conviction,g1$ConvictionDegree)
-#
-# }
+
 #
 # ######READ AND WRITE FILES/RESULTS#################
 #
-# #get COV for ID from sql
-# f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long"))
-# {
-#   # Description
-#   #   This function downloads covariance matrix from DB
-#   #   and can convert it to wide/long format
+
+
 #
-#   # Dependencies:
-#   #   1. require("RODBC")
-#   #   2. require("reshape")
-#
-#   # Test example
-#   # f.getCovFromSQL(RunID = -11, CalculationMethod = "cov", WideOrLong = "wide")
-#
-#
-#   selstr <- paste("select Ticker1, Ticker2, Covariance from betsizing.CovarianceMatrixFlattened ",
-#                   "where RunID=", RunID, " and CalculationMethod='", CalculationMethod, "'", sep="")
-#
-#   con <- FAFunc.GetDB()
-#
-#   # Get covariance matrix
-#   cov_df <- sqlQuery(con, selstr)
-#
-#   # Close DB connection
-#   odbcClose(con)
-#
-#   if(class(cov_df) == "data.frame"){
-#     if(nrow(cov_df) > 0){
-#       if(WideOrLong == "wide"){
-#
-#         ipak("reshape")
-#
-#         # change to wide format
-#         cov_df <- as.data.frame(cast(cov_df, Ticker1 ~ Ticker2 , value = "Covariance", fill = 0))
-#         rownames(cov_df) <- cov_df$Ticker1
-#         cov_df$Ticker1 <- c()
-#
-#         # check symmetry
-#         stopifnot(all(round(cov_df, 7) == t(round(cov_df, 7))))
-#       }
-#       else{
-#         # Long format is required
-#         # Nothing. CovMa is already in long format
-#       }
-#     }else{
-#       # No rows in CovMa
-#       stop(paste("Chosen Covariance with id", RunID,
-#                  "and CalculationMethod", CalculationMethod, "does not exist!"))
-#     }
-#   }else{
-#     # reult has class != data.frame
-#     stop("getCovFromSQL: Query contains a mistake")
-#   }
-#
-#   return(cov_df)
-# }
-#
-# #reorder COV for specific ticker vector
-# f.matchCOVtoTickers <- function(Tickers,COV) {
-#
-#   # Description
-#   #   1. Make sure CovMa has the same tickers as Tickers
-#   #   2. Make sure the sequence is also the same
-#
-#   # Dependencies:
-#   #   NO
-#
-#   # Return value:
-#   #  covariance matrix
-#
-#   if(class(COV) == "data.frame"){
-#     # Check missing tickers
-#     cov_df_col_names <- colnames(COV)
-#     cov_df_row_names <- rownames(COV)
-#
-#     if(all(cov_df_col_names == cov_df_row_names) == TRUE){
-#       # The same sequence in CovMa rows and columns is checked
-#
-#
-#       missTick <- Tickers[is.na(match(Tickers, cov_df_col_names))]
-#       if(length(missTick) == 0){
-#         # we know that tickers are the same. Only sequience can be theoretically different
-#         # change order to make it the same
-#         # if COV has more tickers than Tickers it will also work
-#         COV <- COV[Tickers, Tickers]
-#
-#         # Convert to numeric matrix
-#         cov_ma <- as.matrix(sapply(COV, as.numeric.factor))
-#
-#         if(isSymmetric.matrix(cov_ma, check.attributes = FALSE) == TRUE){
-#           return(COV)
-#         }else{
-#           stop("Covariance Matrix is not symmetric")
-#         }
-#       }else{
-#         stop(paste("The following Tickers lack in Covariance matrix:", paste(missTick, collapse = ", ")))
-#       }
-#     }else{
-#       stop("CovMa: column names and row names are not the same")
-#     }
-#   }else{
-#     stop("COV parameter must be of data.frame type")
-#   }
-# }
-#
-# #Write the optimized weights into the SQL-Result-Upload table
-# f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
-# {
-#   # Description
-#   #   The function uploads optimized asset weights
-#   #   and the corresponding settings to DB
-#
-#   # Dependensies
-#   #   library(RODBC)
-#
-#   # Input Parameters:
-#   #   res_rel: (optimized) relative weights,
-#   #   res_p: optimized portfolio weights = res_rel + Benchmarkweight
-#   #   portfolio: Analyst Portfolio name
-#   #   covID: RunID of the CovMatrix,
-#   #   setID: RCO setting from betsizing.CalculationRCOSettingSetsID
-#   #   calcdatetime: the day and time of calculation
-#
-#   # Test example
-#   #     opt_weights_relative <- rep(0.05,20)
-#   #     opt_weights_portfolio <- rep(0.01,20)
-#   #     names(opt_weights_relative) <- names(opt_weights_portfolio) <- seq(1:20)
-#   #     portfolio <- "U1355708-7 Client";
-#   #     covID <- 777;
-#   #     setID <-  2;
-#   #     calcdatetime <- "2020-01-01"
-#   #     f.writeRCOresToSQL(opt_weights_relative,
-#   #                        opt_weights_portfolio,
-#   #                        portfolio,covID,setID,calcdatetime)
-#
-#
-#   # TODO rename res_rel in opt_rel_weights
-#   # TODO rename res_p in opt_abs_weights
-#   # TODO rename portfolio in AP_name
-#
-#
-#   if(class(res_rel) == "numeric" &&
-#      class(res_p) == "numeric" &&
-#      class(portfolio) == "character" &&
-#      class(covID) == "integer" &&
-#      class(setID) == "integer" &&
-#      class(calcdatetime) == "character"){
-#
-#     # Input has right type
-#     constituents <- names(res_p)
-#
-#     if(all(names(res_rel) == constituents)){
-#       # Constituents' optimized absolute and relative weights have the same order
-#       n_constituents <- length(res_p)
-#       # Portfolio must be the same for all constituents
-#       portfolio <- rep(x = portfolio, times = n_constituents)
-#
-#       # Prepare table structure
-#       # This part is very tricky, sqlSave parameters leads to bug.
-#
-#       df_to_upload <- data.frame(CalculationRCOResultForUploadID = seq(1:n_constituents),
-#                                  CalculationDate = calcdatetime,
-#                                  FKAPS = portfolio,
-#                                  FKCovMaRunID = covID,
-#                                  FKCalculationRCOSettingSetID = setID,
-#                                  Ticker = constituents,
-#                                  OptimizedRelativeWeight = res_rel,
-#                                  OptimizedPortfolioWeight = res_p)
-#
-#       # delete current entries + Insert
-#       con <- FAFunc.GetDB()
-#       table <- "betsizing.CalculationRCOResultForUpload"
-#
-#       try(sqlDrop(channel = con, sqtable =  table, errors = FALSE), silent = TRUE)
-#
-#       columnTypes <- list(CalculationRCOResultForUploadID = "int",
-#                           CalculationDate = "datetime",
-#                           FKAPS = "NVARCHAR(50)",
-#                           FKCovMaRunID = "int",
-#                           FKCalculationRCOSettingSetID = "int",
-#                           Ticker = "NVARCHAR(50)",
-#                           OptimizedRelativeWeight = "decimal(15,3)",
-#                           OptimizedPortfolioWeight = "decimal(15,3)")
-#
-#       s <- sqlSave(channel = con,
-#                    dat = df_to_upload,
-#                    tablename = table,
-#                    varTypes = columnTypes)
-#
-#       # Close connection
-#       odbcClose(con)
-#
-#       if(s == 1){
-#         print(paste("successfully inserted all specificTickerValues for the portfolio: ",
-#                     portfolio[1],
-#                     ", set: ",
-#                     setID,
-#                     ",cov: ",
-#                     covID))
-#         # 0 is sucess
-#         return(0)
-#       }else{
-#         stop("some error in sql insert")
-#       }
-#     }else{
-#       stop("The order of constituents is not the same for absolute and relative optimized weights")
-#     }
-#   }else{
-#     stop("writeRCOresToSQL: at least one of the input parameters is of a wrong type")
-#   }
-#   #example
-#   #res_rel <- RCOres$RW[,1];res_p <- res_rel-RCOres$TARG[,"lb",1];portfolio <- "EQ_CH_L"; covID <- as.integer(7) ;setID <- as.integer(1) ;calcdatetime <- as.character(Sys.Date())
-#   #f.writeRCOresToSQL(res_rel,res_p,portfolio,covID,setID,calcdatetime)
-# }
+
 #
 #
 # f.writeRCOsettingsToSQL <- function(set,verbose=FALSE)
@@ -1737,18 +1776,7 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 # #ipak(packages)
 # #options(java.parameters = "-Xmx1024m")
 #
-# ####TRANSFORM FACTORS INTO NUMERICS####
-# as.numeric.factor <- function(x) {
-#   #check if is already numeric then do nothing
-#   if (class(x) == "numeric") {
-#     return(x)
-#   }
-#   else
-#   {
-#     as.numeric(levels(x))[x]
-#   }
-#
-# }
+
 #
 # ####Connect to db ######
 # FAFunc.GetDB <- function(database = "Aktienmodell") {
