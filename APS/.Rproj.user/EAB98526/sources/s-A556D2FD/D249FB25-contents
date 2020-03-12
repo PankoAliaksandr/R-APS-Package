@@ -741,16 +741,33 @@ get_rcb <- function(weight_v, cov){
   #   rcb <- get_rcb(weight,cov)
 
   if(class(weight_v) == "numeric" &&
-     isTRUE(any(class(weight_v) %in% c("data.frame", "matrix", "data.table")))){
+     isTRUE(any(class(cov) %in% c("data.frame", "matrix", "data.table")))){
 
     # Dimensions check
     stopifnot(isTRUE(is.vector(weight_v)) &&
               length(weight_v) == nrow(cov)
               && nrow(cov) == ncol(cov))
 
-    # names must be listed in the same order to multiply correctly
-    if(all(names(weight_v) == colnames(cov))){
+    RCO_names_v <- names(weight_v)
+    cov_names_v <- colnames(cov)
 
+    # Check if weights and covariance columns are named and names are feasible
+    if(length(RCO_names_v) > 0 &&
+       length(cov_names_v) > 0 &&
+       length(RCO_names_v) == length(cov_names_v) &&
+       all(RCO_names_v %in% cov_names_v)){
+
+      # names must be listed in the same order to multiply correctly
+      if(all(RCO_names_v == cov_names_v)){
+        # Expected behavior. Nothing it's already correct
+      }else{
+        message("get_rcb: names are not the same")
+        # mapping is required
+        # Here names are the same but the order can differ
+        weight_v <- weight_v[cov_names_v]
+      }
+
+      # Here weights match covariance
       # Calculate portfolio variance
       VAR <- as.numeric(t(weight_v) %*% as.matrix(cov) %*% weight_v)
 
@@ -761,7 +778,7 @@ get_rcb <- function(weight_v, cov){
       return(rcb_v)
 
     }else{
-      stop("get_rcb: names are not the same")
+      stop("get_rcb: covariance names and weight names are not the same or empty")
     }
   }else{
     stop("get_rcb: input has wrong type")

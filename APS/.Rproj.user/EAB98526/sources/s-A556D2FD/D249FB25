@@ -4,16 +4,16 @@
     "created" : 1583839401888.000,
     "dirty" : false,
     "encoding" : "UTF-8",
-    "folds" : "75|53|88|0|\n92|49|120|0|\n123|52|174|0|\n177|64|206|0|\n209|80|306|0|\n309|81|360|0|\n483|36|492|0|\n495|46|540|0|\n543|42|666|0|\n675|52|696|0|\n699|66|727|0|\n824|53|1046|0|\n",
+    "folds" : "75|53|88|0|\n92|49|120|0|\n123|52|174|0|\n177|64|206|0|\n209|80|306|0|\n309|81|360|0|\n483|36|492|0|\n495|46|540|0|\n543|42|666|0|\n675|52|696|0|\n699|66|727|0|\n",
     "hash" : "0",
     "id" : "D249FB25",
-    "lastKnownWriteTime" : 1584004645,
-    "last_content_update" : 1584004645886,
+    "lastKnownWriteTime" : 1584009384,
+    "last_content_update" : 1584009384852,
     "path" : "C:/Projects/Rpackage/APS/R/APS_functions.R",
     "project_path" : "R/APS_functions.R",
     "properties" : {
-        "cursorPosition" : "749,0",
-        "scrollLine" : "733"
+        "cursorPosition" : "794,24",
+        "scrollLine" : "765"
     },
     "relative_order" : 2,
     "source_on_save" : false,
