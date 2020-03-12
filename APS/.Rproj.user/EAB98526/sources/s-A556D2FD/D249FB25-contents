@@ -772,7 +772,11 @@ get_rcb <- function(weight_v, cov){
       VAR <- as.numeric(t(weight_v) %*% as.matrix(cov) %*% weight_v)
 
       # Calculate risk contribution
-      rcb_v <- weight_v * as.matrix(cov) %*% weight_v
+      rcb_ma <- weight_v * as.matrix(cov) %*% weight_v
+      # convert to vector
+      rcb_v <- as.vector(rcb_ma)
+      # set the same names
+      names(rcb_v) <- names(weight_v)
       rcb_v <- rcb_v/VAR
 
       return(rcb_v)
@@ -992,10 +996,18 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
     #check direction constraint (should be all <=0)
     injuries <- -A %*% opt_output$solution < 0
 
-    if(sum(injuries) > 1 || opt_output$status %in% c(-1,-2,-3,-4) || abs(opt_output$objective) == Inf )  {
+    if(sum(injuries) > 1 ||
+       opt_output$status %in% c(-1,-2,-3,-4) ||
+       abs(opt_output$objective) == Inf ){
+
+      # Optimization failed
+
       validResult <- FALSE
       print("optimization failed or direction constrained violated or target function Inf ,invalid result. Solution reset to NA") #no stop as loop should continue!!!
+
+      # initialize optimal solution (weights)
       rw <- pw <- rep(NA, length(rw))
+      names(rw) <- colnames(cov)
 
       # store results in optim_details
       optim_details <- c(Calculated = as.character(Sys.time()),
@@ -1011,19 +1023,30 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
                          validResult = validResult)
 
       if(opt_output$status == -4 || opt_output$status == -1 ){
-        runAnotherOptIteration <- ifelse(attempt <= MaxAttempts,TRUE,FALSE)
-        set$TargetTE <- set$TargetTE+(stats::runif(1)-0.5)*10^-6
-        print(paste("The ",attempt-1,". try resulted in Error -4 or -1!",
+
+        # set loop control variable
+        runAnotherOptIteration <- ifelse(attempt <= MaxAttempts, TRUE, FALSE)
+
+        # Update required accuracy
+        set$TargetTE <- set$TargetTE + (stats::runif(1) - 0.5) * 10 ^ -6
+        print(paste("The ", attempt - 1, ". try resulted in Error -4 or -1!",
                     ifelse(runAnotherOptIteration,paste("Execute a ",attempt,". time with a slightly different TE-target of: ", set$TargetTE),
                            paste("No results found after attempt",attempt))))
-      }else{runAnotherOptIteration <- FALSE}
-
+      }else{
+        # opt_output$status == -2 or -3
+        runAnotherOptIteration <- FALSE
+      }
     }else{
-      #valid calculation: get optimization results characteristics and store the results
-      validResult <- TRUE ;
+      # valid calculation: get optimization results characteristics and store the results
+
+      validResult <- TRUE
       runAnotherOptIteration <- FALSE
       iterations <- opt_output$iterations
+      # Prepare optimal relative weights with names
       rw <-  opt_output$solution
+      names(rw) <- colnames(cov)
+
+      # Absolute weights. The formula is correct, since lb = -bm
       pw <- rw - targ$lb    #portfolioweights. checks needed???
       orc <- OptimizationResultsCharacteristics(rw = rw,
                                                 cov = cov,
@@ -1060,7 +1083,8 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
   }
   return(list(rw = rw,
               pw = pw,
-              optim_details = optim_details))
+              optim_details = optim_details,
+              RiskContribution = orc$rc))
 }
 
 runRCOFromAPS <- function(portfolioName,
@@ -1128,6 +1152,8 @@ runRCOFromAPS <- function(portfolioName,
 
   # reduce target_table on those with an active conviction
   opt_weights_relative <- rep(0, length = nrow(target_table))
+
+  # The solver calculates ln(conviction*gewicht), so ln must not be 0
   # Find which stocks have a signal (not neutral)
   stocks_with_signal_ind <- target_table$conviction != 0
   # Take only with a signal
@@ -1153,18 +1179,16 @@ runRCOFromAPS <- function(portfolioName,
     # The result is valid
 
     # Optimal weights are updated in SQL table
-    opt_weights_relative[stocks_with_signal_ind] <- optimization_result_l$rw
+    opt_weights_relative <- optimization_result_l$rw
 
     # Optimal absolute weights are (relative + bm); bm = -lb
-    opt_weights_portfolio <- opt_weights_relative - target_table$lb
+    opt_weights_portfolio <- optimization_result_l$pw
 
     # Calculation timestamp
     calcdatetime <- optimization_result_l$optim_details["Calculated"]
 
-    names(opt_weights_relative) <- names(opt_weights_portfolio) <- rownames(target_table)
-
     # Get risk contribution
-    risk_contribution <- get_rcb(weight_v = opt_weights_relative, cov = covMa)
+    risk_contribution <- optimization_result_l$RiskContribution
 
     # create upload df
     covMaSetID <- as.integer(covMaSetID)
