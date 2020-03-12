@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583997792171.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "515640181",
+    "id" : "52BBA682",
+    "lastKnownWriteTime" : 1583997812,
+    "last_content_update" : 1583997812662,
+    "path" : "C:/Projects/Rpackage/APS/man/get_rcb.Rd",
+    "project_path" : "man/get_rcb.Rd",
+    "properties" : {
+        "cursorPosition" : "4,53",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 5,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_doc"
+}

@@ -307,8 +307,7 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 }
 
 # get COV for ID from sql
-f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long"))
-{
+f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long")){
   # Description
   #   This function downloads covariance matrix from DB
   #   and can convert it to wide/long format
@@ -362,8 +361,13 @@ f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long"))
 }
 
 #Write the optimized weights into the SQL-Result-Upload table
-f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
-{
+f.writeRCOresToSQL <- function(res_rel,
+                               res_p,
+                               risk_contribution,
+                               portfolio,
+                               covID,
+                               setID,
+                               calcdatetime){
   # Description
   #   The function uploads optimized asset weights
   #   and the corresponding settings to DB
@@ -399,6 +403,7 @@ f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
 
   if(class(res_rel) == "numeric" &&
      class(res_p) == "numeric" &&
+     class(risk_contribution) == "numeric" &&
      class(portfolio) == "character" &&
      class(covID) == "integer" &&
      class(setID) == "integer" &&
@@ -407,7 +412,10 @@ f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
     # Input has right type
     constituents <- names(res_p)
 
-    if(all(names(res_rel) == constituents)){
+    # Values must be listed in the same order
+    if(all(names(res_rel) == constituents) &&
+       all(names(risk_contribution) == constituents)){
+
       # Constituents' optimized absolute and relative weights have the same order
       n_constituents <- length(res_p)
       # Portfolio must be the same for all constituents
@@ -415,7 +423,6 @@ f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
 
       # Prepare table structure
       # This part is very tricky, sqlSave parameters leads to bug.
-
       df_to_upload <- data.frame(CalculationRCOResultForUploadID = seq(1:n_constituents),
                                  CalculationDate = calcdatetime,
                                  FKAPS = portfolio,
@@ -423,7 +430,8 @@ f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
                                  FKCalculationRCOSettingSetID = setID,
                                  Ticker = constituents,
                                  OptimizedRelativeWeight = res_rel,
-                                 OptimizedPortfolioWeight = res_p)
+                                 OptimizedPortfolioWeight = res_p,
+                                 RiskContribution = risk_contribution)
 
       # delete current entries + Insert
       con <- FAFunc.GetDB()
@@ -438,7 +446,8 @@ f.writeRCOresToSQL <- function(res_rel,res_p,portfolio,covID,setID,calcdatetime)
                           FKCalculationRCOSettingSetID = "int",
                           Ticker = "NVARCHAR(50)",
                           OptimizedRelativeWeight = "decimal(15,3)",
-                          OptimizedPortfolioWeight = "decimal(15,3)")
+                          OptimizedPortfolioWeight = "decimal(15,3)",
+                          RiskContribution = "decimal(15,3)")
 
       s <- RODBC::sqlSave(channel = con,
                           dat = df_to_upload,
@@ -532,8 +541,7 @@ f.matchCOVtoTickers <- function(Tickers,COV) {
 }
 
 #get the proper functions depending on settings!
-f.setOptfunctions <- function(set, k = 0)
-{
+f.setOptfunctions <- function(set, k = 0){
   # Dependencies
   #   NO
 
@@ -659,8 +667,13 @@ f.setOptfunctions <- function(set, k = 0)
 }
 
 # get range for weights of each ticker
-f.getWeightRange <- function(lb, ub, conviction, tradeability, MaxRelWeight, LowConvictionExitInDays = 10, ConvictionGroups = 1 )
-{
+f.getWeightRange <- function(lb,
+                             ub,
+                             conviction,
+                             tradeability,
+                             MaxRelWeight,
+                             LowConvictionExitInDays = 10,
+                             ConvictionGroups = 1 ){
   ConvictionGroups <- ConvictionGroups + 1
   groupedConviction <-  dplyr::ntile(abs(conviction),ConvictionGroups)-1
   ConvictionDegree <- pmax(1,groupedConviction)  #-1 as usually group without a bet is last, still ensure that factor is at least 1!
@@ -684,8 +697,7 @@ f.getWeightRange <- function(lb, ub, conviction, tradeability, MaxRelWeight, Low
 }
 
 #implement short-index in portfolio
-ImplIndexPosition <- function(w, w_bm, ZeroNetInvestment = FALSE)
-{
+ImplIndexPosition <- function(w, w_bm, ZeroNetInvestment = FALSE){
   # Dependencies: NO
 
   stopifnot(length(w)-1 == length(w_bm)) #w includes index position, w_bm only the index constituents!
@@ -715,26 +727,49 @@ ImplIndexPosition <- function(w, w_bm, ZeroNetInvestment = FALSE)
   #ImplIndexPosition(w,w_bm)
 }
 
-#get risk contributions of active weights
-get_rcb <- function(weight,cov)
-{
+# done
+# get risk contributions of active weights
+get_rcb <- function(weight_v, cov){
+
+  # Description: get risk contributions of active weights
+
   # Dependencies: NO
 
-  stopifnot(is.vector(weight)==1 && length(weight)==nrow(cov) && nrow(cov)==ncol(cov))
-  VAR <- as.numeric(t(weight) %*% as.matrix(cov) %*% weight)
-  rcb <- weight*as.matrix(cov) %*% weight
-  rcb <- rcb/VAR
+  # Example (needs an existing result in RCOres-form)
+  #   weight <- RCOres$RW[,1]
+  #   cov <- RCOres$COV[,,1]
+  #   rcb <- get_rcb(weight,cov)
 
-  #example (needs an existing result in RCOres-form)
-  # weight <- RCOres$RW[,1]
-  # cov <- RCOres$COV[,,1]
-  #(rcb <- get_rcb(weight,cov))
+  if(class(weight_v) == "numeric" &&
+     isTRUE(any(class(weight_v) %in% c("data.frame", "matrix", "data.table")))){
+
+    # Dimensions check
+    stopifnot(isTRUE(is.vector(weight_v)) &&
+              length(weight_v) == nrow(cov)
+              && nrow(cov) == ncol(cov))
+
+    # names must be listed in the same order to multiply correctly
+    if(all(names(weight_v) == colnames(cov))){
+
+      # Calculate portfolio variance
+      VAR <- as.numeric(t(weight_v) %*% as.matrix(cov) %*% weight_v)
+
+      # Calculate risk contribution
+      rcb_v <- weight_v * as.matrix(cov) %*% weight_v
+      rcb_v <- rcb_v/VAR
+
+      return(rcb_v)
+
+    }else{
+      stop("get_rcb: names are not the same")
+    }
+  }else{
+    stop("get_rcb: input has wrong type")
+  }
 }
 
-
 #####Optimization Results Characteristic
-OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target)
-{
+OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target){
   # Functions:
   # 1. ImplIndexPosition
   # 2. get_rcb
@@ -760,7 +795,7 @@ OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target)
   if(round(te,4) != round(as.numeric(sqrt(t(rw_impl) %*% as.matrix(cov) %*% rw_impl)),4)   ) #te portfolio needs to be unchanged by
   {message("portfolio risk neutrality to implementation of index position in portfolio violated. Check LowerBounds and optimization quality!!!!")}
   #risk contributions
-  rc <- get_rcb(weight=rw,cov=cov)
+  rc <- get_rcb(weight_v = rw, cov=cov)
 
   #sum of rc actual - target
   total_rb_dev <- sum(abs(rc-rb_target))
@@ -787,7 +822,7 @@ OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target)
 
 # Optimization Functions
 # RCO: Risk Contribution Optimization
-f.runRCO <- function(targ,set,cov, MaxAttempts = 2){
+f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
   # Description
   #   This function is the optimizer
 
@@ -1018,8 +1053,6 @@ runRCOFromAPS <- function(portfolioName,
                           isReal = FALSE,
                           calc_method){
 
-
-
   # Description
   #   The function executes the opritizer call with
   #   correct parameters and writes oprimized weights to DB
@@ -1031,12 +1064,13 @@ runRCOFromAPS <- function(portfolioName,
   #   4. library(dplyr)
 
   # Functions:
-  #   1. FAFunc.GetDB()     [external*]
-  #   2. getTargetTable     [internal]
-  #   3. getRCOSetSettings  [internal]
-  #   4. f.getCovFromSQL    [external]
-  #   5. f.runRCO           [external]
-  #   6. f.writeRCOresToSQL [external]
+  #   1. FAFunc.GetDB
+  #   2. getTargetTable
+  #   3. getRCOSetSettings
+  #   4. f.getCovFromSQL
+  #   5. f.runRCO
+  #   6. f.writeRCOresToSQL
+  #   7. get_rcb
 
   print("The process has been started")
 
@@ -1058,78 +1092,80 @@ runRCOFromAPS <- function(portfolioName,
   }else{
     print("BAD: target table is empty")
   }
-  #check if boundaries are compatible with the direction convictions: ADDED!
+
+  # check if boundaries are compatible with the direction convictions: ADDED!
+  # TODO simplify it using "all"
   stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
 
-
-
-
+  # Get RCO optimization settings
   RCO_settings_df <- getRCOSetSettings(RCOSetID = RCOSetID,
                                        connection = connection)
-  if(length(RCO_settings_df) > 0){
-    print("GOOD: RCO settings table is NOT empty")
-    print(RCO_settings_df, row.names=TRUE)
-  }else{
-    print("BAD: RCO settings table is empty")
-  }
+  # Close connection
+  RODBC::odbcClose(connection)
 
-  # TODO  use APS package
   covMa <- f.getCovFromSQL(RunID = covMaSetID,
                            CalculationMethod = calc_method,
                            WideOrLong = "wide")
 
-  if(nrow(covMa) > 0){
-    print("GOOD: covMa is NOT empty")
-  }else{
-    print("BAD: covMa is empty")
-  }
-
-  # check dimensions -> delete if not equal to expected value
+  # TODO check dimensions -> delete if not equal to expected value
 
   # reduce target_table on those with an active conviction
-  opt_weights_relative <- rep(0,length=nrow((target_table)))
-  sec_a <- target_table$conviction != 0
-  target_table_a <- target_table[sec_a,]
+  opt_weights_relative <- rep(0, length = nrow(target_table))
+  # Find which stocks have a signal (not neutral)
+  stocks_with_signal_ind <- target_table$conviction != 0
+  # Take only with a signal
+  target_table_signal <- target_table[stocks_with_signal_ind, ]
 
   # The function should calculate optimal weights and update optimal weights
   tryCatch(
     { # Try section
 
       # TODO first copy the function here, second use APS package
-      RCOres <- f.runRCO(targ = target_table_a,
-                         set = RCO_settings_df,
-                         cov = covMa)
+      optimization_result_l <- f.runRCO(targ = target_table_signal,
+                                        set = RCO_settings_df,
+                                        cov = covMa)
+
     }, error = function(e){
       print(paste0("runRCO stopped with an error: ", e))
       stop("runRCO stopped with an error: ", e)
     }
   )
 
-  #check if optimization returned a valid result
-  if(as.logical(RCOres$optim_details["validResult"]) == FALSE) {stop("no valid result found in optimization")}
+  # check if optimization returned a valid result
+  if(isTRUE(as.logical(optimization_result_l$optim_details["validResult"]))){
+    # The result is valid
 
+    # Optimal weights are updated in SQL table
+    opt_weights_relative[stocks_with_signal_ind] <- optimization_result_l$rw
 
+    # Optimal absolute weights are (relative + bm); bm = -lb
+    opt_weights_portfolio <- opt_weights_relative - target_table$lb
 
-  # Optimal weights are updated in SQL table
-  opt_weights_relative[sec_a] <- RCOres$rw
-  opt_weights_portfolio <- -target_table$lb + opt_weights_relative
-  calcdatetime <- RCOres$optim_details["Calculated"]
-  names(opt_weights_relative) <- names(opt_weights_portfolio) <- rownames(target_table)
+    # Calculation timestamp
+    calcdatetime <- optimization_result_l$optim_details["Calculated"]
 
-  # create upload df
-  covMaSetID <- as.integer(covMaSetID)
-  RCOSetID <- as.integer(RCOSetID)
+    names(opt_weights_relative) <- names(opt_weights_portfolio) <- rownames(target_table)
 
-  print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
+    # Get risk contribution
+    risk_contribution <- get_rcb(weight_v = opt_weights_relative, cov = covMa)
 
-  f.writeRCOresToSQL(res_rel = opt_weights_relative*100,#sql-table stores values in Percentage
-                     res_p = opt_weights_portfolio*100, #sql-table stores values in Percentage
-                     portfolio = portfolioName,
-                     covID = covMaSetID,
-                     setID = RCOSetID,
-                     calcdatetime = calcdatetime)
-  # Close connection
-  RODBC::odbcClose(connection)
+    # create upload df
+    covMaSetID <- as.integer(covMaSetID)
+    RCOSetID <- as.integer(RCOSetID)
+
+    print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
+
+    f.writeRCOresToSQL(res_rel = opt_weights_relative * 100,#sql-table stores values in Percentage
+                       res_p = opt_weights_portfolio * 100, #sql-table stores values in Percentage
+                       risk_contribution = risk_contribution,
+                       portfolio = portfolioName,
+                       covID = covMaSetID,
+                       setID = RCOSetID,
+                       calcdatetime = calcdatetime)
+
+  }else{
+    stop("no valid result found in optimization")
+  }
 }
 #
 #
