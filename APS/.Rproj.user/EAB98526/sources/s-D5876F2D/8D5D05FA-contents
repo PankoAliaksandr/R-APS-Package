@@ -558,175 +558,106 @@ f.setOptfunctions <- function(set, k = 0){
     }
   }
 
-  # check if nlcon-settings are allowed
-  stopifnot(set$Ix_eq_Cash == FALSE ||
-              (set$Ix_eq_Cash == TRUE &&
-                 set$SoftNetInvConstraint == FALSE &&
-                 set$IndexFlex==FALSE))
+  #nlcons
+  stopifnot(set$Ix_eq_Cash==FALSE || (set$Ix_eq_Cash==TRUE && set$SoftNetInvConstraint==FALSE && set$IndexFlex==FALSE)) #check if nlcon-settings are allowed
 
-  # SoftNetInvConstraint shows if leverage and cash are allowed
+  #set the right nlcon
   if(set$SoftNetInvConstraint == TRUE)
   {
-    # IndexFlex shows if index should be treated as normal asset or not
+    #nlcon depend on treatment of index asset
     if(set$IndexFlex==TRUE)
     {
       print(paste("OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range"))
-
-      nlcon_ineq <- function(w,
-                             COVAR,
-                             target_te,
-                             A,
-                             rb_a,
-                             CashTolerance,
-                             LeverageTolerance,
-                             NetInvLambda){
-
-        # Flexible index means that cash and leverage are allowed
-        # nlcon algorithm keeps NetInvestment within the range
-        # (Index still has to impact TE, just in TargetFunction disregarded!)
-
-        # All constraints has structure: x <= 0
-        # w[1] is reserved for the index
-
-        # There are 5 constraints here:
-        # 1. Direction constraint: conviction should correspond to weight sign
-        # 2. TE-constraint: Overall portfolio should not exceed specified risk budget
-        # 3. max postive NetInvestment (Leverage): how much we cash can be borrowed additionally
-        # 4. max negative NetInvestemnt (Cash): how much cash can be in a portfolio
-        # 5. limit risk contribution of first (index position's)
-
-        direction <- diag(c(0,diag(A[-1,-1]))) %*% w
-        te <- sqrt(t(w) %*% COVAR %*% w) - target_te
-        leverage <- sum(w) - LeverageTolerance
-        cash <- -sum(w) - CashTolerance
-        index_rc <- w[1] * (COVAR %*% w)[1] / as.numeric(t(w) %*% COVAR %*% w) - rb_a[1]
-
-
-        # jacobian of constraints with respect to weights(w)
-
-        # gradient: direction constraint
-        grad_dir <- diag(c(0,diag(A[-1,-1])))
-        # gradient: TE-constraint
-        grad_te <- t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))
-        # gradient: leverage constraint
-        grad_leverage <- t(rep(1,length(w)))
-        # gradient: max Short position (Cash)
-        grad_cash <- t(rep(-1,length(w)))
-
-        grad_index_rc <- t(rbind( (((COVAR %*% w)[1] + w[1]*COVAR[1,1])* (t(w)%*%COVAR%*%w) - 2*w[1]*COVAR[1,]%*%w*(COVAR%*%w)[1]) / (t(w) %*% COVAR %*% w)^2, #first row derivative after w[1]
-                                  as.numeric(w[1]/(t(w) %*% COVAR %*% w))*COVAR[1,-1]                                                    #row 2:n derivatives after w[2:n]   (1)
-                                  - as.numeric((2*w[1]*(COVAR[1,]%*% w))/(t(w) %*% COVAR %*% w)^2)*COVAR[-1,]%*%w ))                    #row 2:n derivatives after w[2:n]   (2)
-
-        return(list("constraints"= c(direction, te, leverage, cash, index_rc),
-                    "jacobian" = rbind(grad_dir,
-                                       grad_te,
-                                       grad_leverage,
-                                       grad_cash,
-                                       grad_index_rc)))
+      nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda)
+      {#OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range (Index still has to impact TE, just in TargetFunction disregarded!)
+        return(list("constraints"= c(
+          diag(c(0,diag(A[-1,-1]))) %*% w                                #direction constraint
+          ,sqrt(t(w) %*% COVAR %*% w) - target_te #TE-constraint
+          ,sum(w) - LeverageTolerance      #max postive NetInvestment (Leverage)
+          ,-sum(w) - CashTolerance          #max negative NetInvestemnt (Cash)
+          ,w[1] * (COVAR %*% w)[1] / as.numeric(t(w) %*% COVAR %*% w) - rb_a[1]#limit risk contribution of first (index position's)
+        ),
+        "jacobian" = rbind(
+          diag(c(0,diag(A[-1,-1])))                                    #gradient direction constraint
+          ,t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))  #gradient TE-constraint
+          ,t(rep(1,length(w)))                 #gradient: no leverage constraint
+          ,t(rep(-1,length(w)))                #gradient max Short position
+          ,t(rbind( (((COVAR %*% w)[1] + w[1]*COVAR[1,1])* (t(w)%*%COVAR%*%w) - 2*w[1]*COVAR[1,]%*%w*(COVAR%*%w)[1]) / (t(w) %*% COVAR %*% w)^2, #first row derivative after w[1]
+                    as.numeric(w[1]/(t(w) %*% COVAR %*% w))*COVAR[1,-1]                                                    #row 2:n derivatives after w[2:n]   (1)
+                    - as.numeric((2*w[1]*(COVAR[1,]%*% w))/(t(w) %*% COVAR %*% w)^2)*COVAR[-1,]%*%w )))                    #row 2:n derivatives after w[2:n]   (2)
+        )
+        )
       }
 
       #here still make an extension for Ix_eq_Cash (cond. on parameter!!!). A bit tough to adjust the formula!!!
       #else if set$Ix_eq_Cash: .....
 
     } else {
-      # set$IndexFlex == FALSE
-      # nlcon keeps NetInvestment within range, index as normal asset"
+      #"OPTIMIZE: nlcon keeps NetInvestment within range, ix as normal asset"
       print(paste("OPTIMIZE: nlcon keeps NetInvestment within range, ix as normal asset"))
-
-      nlcon_ineq <- function(w,
-                             COVAR,
-                             target_te,
-                             A,
-                             rb_a,
-                             CashTolerance,
-                             LeverageTolerance,
-                             NetInvLambda){
-
-        # All constraints has structure: x <= 0
-
-        # There are 4 constraints here:
-        # 1. Direction constraint: conviction should correspond to weight sign
-        # 2. TE-constraint: Overall portfolio should not exceed specified risk budget
-        # 3. max postive NetInvestment (Leverage): how much we cash can be borrowed additionally
-        # 4. max negative NetInvestemnt (Cash): how much cash can be in a portfolio
-
-        direction <- as.matrix(A %*% w)
-        te <- c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te))
-        leverage <- sum(w) - LeverageTolerance
-        cash <- -sum(w) - CashTolerance
-
-        # grads are correct
-        grad_dir <- A
-        grad_te <- as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))
-        grad_leverage <- t(rep(1,length(w)) )
-        grad_cash <- t(rep(-1,length(w)))
-
-        return(list("constraints"= c(direction, te, leverage, cash),
-                    "jacobian" = rbind(grad_dir, grad_te, grad_leverage, grad_cash)))
+      nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
+        return(list(
+          "constraints"= c(as.matrix(A %*% w)  #direction constraints
+                           ,c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te)) #TE-constraint
+                           , sum(w) - LeverageTolerance               #allow for 25Bp Cash
+                           ,-sum(w) - CashTolerance                  #max Short position leverage constraint (s.t. Tolerance)
+          ),
+          "jacobian" = rbind(A
+                             ,as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))#t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))
+                             ,t(rep(1,length(w)) )                 #gradient: no leverage constraint
+                             ,t(rep(-1,length(w)))                 #gradient max Short position
+          )
+        ))
       }
     }
 
   } else {
-    # set$SoftNetInvConstraint == FALSE.
-    # Leverage and Cash are not allowed (NetInvestment == 0)
-    if(set$IndexFlex == TRUE){
-      # Logic is not defined
-    }else{
-      # Here set$IndexFlex == FALSE
-      print(paste("OPTIMIZE: eqcon keeps NetInvestment == 0"))
+    #leverage control happens in equality constrained!
 
-      nlcon_eq <- function(w,
-                           COVAR,
-                           target_te,
-                           A,
-                           rb_a,
-                           CashTolerance,
-                           LeverageTolerance,
-                           NetInvLambda){
-        # TODO why -sum ? it must be sum(w) = 0
-        return(list("constraints" = -sum(w),
-                    "jacobian"= rep(-1,length(w))))
-      }
+    # if(set$CashTolerance != 0 ) {print(paste("Currently this case is not feasible as here is the Non-SoftLeverage part where CashTolerance must =0!)
+    #                                          >>move to Soft-Leverage part to become more meaningful! / another Parameter with cash-target!"))}
+    #         if(set$Ix_eq_Cash)#equality constrained depends on IX_eq_Cash
+    #         {
+    #           stopifnot(set$algo %in% c("NLOPT_GN_ISRES","NLOPT_LN_AUGLAG_EQ"))
+    #           nlcon_eq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance){
+    #           return(list(
+    #           "constraints" = -sum(w[-1]) - CashTolerance,#replace CashTolerance with CashRequirement!!!
+    #           "jacobian"= c(0,rep(-1,(length(w)-1)))
+    #           ))
+    #
+    #         }
+    #       }else{ }
+    print(paste("OPTIMIZE: eqcon keeps NetInvestment == 0"))
+    nlcon_eq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
+      #"OPTIMIZE: eqcon keeps NetInvestment == 0"
+      return(list(
+        "constraints" = -sum(w),
+        "jacobian"= rep(-1,length(w))
+      ))
+    }
 
-      # TODO k is not defined here
-      # print(paste("Loop",k,"OPTIMIZE: ix as normal asset"))
+    print(paste("Loop",k,"OPTIMIZE: ix as normal asset"))
+    nlcon_ineq <- function(w,COVAR,target_te,A,rb_a,CashTolerance,LeverageTolerance,NetInvLambda){
+      return(list(
+        "constraints"= c(as.matrix(A %*% w)  #direction constraints
+                         ,c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te)) #TE-constraint
+                         #  , sum(w) - CashTolerance                   #no leverage constraint (s.t. Tolerance)
+                         #   ,-sum(w) - CashTolerance                  #max Short position leverage constraint (s.t. Tolerance)
+        ),
+        "jacobian" = rbind(A
+                           ,as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))#t((COVAR %*% w) /  as.numeric(sqrt(t(w) %*% COVAR %*% w) ))
+                           # ,t(rep(1,length(w)) )                 #gradient: no leverage constraint
+                           # ,t(rep(-1,length(w)))                 #gradient max Short position
+        )
+      ))
+    }
 
-      nlcon_ineq <- function(w,
-                             COVAR,
-                             target_te,
-                             A,
-                             rb_a,
-                             CashTolerance,
-                             LeverageTolerance,
-                             NetInvLambda){
+  }
 
-        # All constraints has structure: x <= 0
-
-        # There are 2 constraints here:
-        # 1. Direction constraint: conviction should correspond to weight sign
-        # 2. TE-constraint: Overall portfolio should not exceed specified risk budget
-
-        direction <- as.matrix(A %*% w)
-        te <- c(as.matrix(sqrt(t(w) %*% COVAR %*% w)) - as.matrix(target_te))
-
-        grad_dir <- A
-        grad_te <- as.matrix(t((COVAR %*% w) /  (rep(sqrt(t(w) %*% COVAR %*% w),length(w)) )))
-
-        return(list("constraints"= c(direction, te),
-                    "jacobian" = rbind(grad_dir, grad_te)))
-      } # end of nlcon_ineq
-    } # end of set$IndexFlex == FALSE
-  } # end of set$SoftNetInvConstraint == FALSE
-
-  # return ftarget and nlcon
+  #return ftarget and nlcon
   if(exists("nlcon_eq"))
-  {
-    return(list(ftarget = ftarget,
-                nlcon_eq = nlcon_eq,
-                nlcon_ineq = nlcon_ineq))
-  }else{
-    return(list(ftarget = ftarget,
-                nlcon_ineq = nlcon_ineq))
+  {return(list(ftarget=ftarget,nlcon_eq=nlcon_eq,nlcon_ineq=nlcon_ineq))}else{
+    return(list(ftarget=ftarget,nlcon_ineq=nlcon_ineq))
   }
 }
 

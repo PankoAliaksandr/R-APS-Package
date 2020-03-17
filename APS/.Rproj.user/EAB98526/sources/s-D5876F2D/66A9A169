@@ -1,21 +1,21 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1584013025502.000,
+    "created" : 1584108309128.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
     "hash" : "0",
-    "id" : "DA4D86DB",
-    "lastKnownWriteTime" : 1584010000,
-    "last_content_update" : 1584010000,
+    "id" : "66A9A169",
+    "lastKnownWriteTime" : 1584363023,
+    "last_content_update" : 1584363023,
     "path" : "G:/FAP/Equities/Betsizing/CodeTest/scz/runRCOFromAPS.R",
     "project_path" : null,
     "properties" : {
-        "cursorPosition" : "477,1",
-        "scrollLine" : "445"
+        "cursorPosition" : "73,0",
+        "scrollLine" : "0"
     },
-    "relative_order" : 4,
+    "relative_order" : 2,
     "source_on_save" : false,
     "source_window" : "",
     "type" : "r_source"
