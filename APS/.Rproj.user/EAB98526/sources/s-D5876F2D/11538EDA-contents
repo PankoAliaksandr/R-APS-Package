@@ -409,7 +409,7 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
         ind_0_weight <- which(opt_output$solution) == 0
 
         # at least one is not empty here
-        if(length(ind_0_conv) == length(ind_0_conv) &&
+        if(length(ind_0_conv) == length(ind_0_weight) &&
            all(ind_0_conv == ind_0_weight)){
           # Valid: 0 weights correspond to 0 convictions
 
@@ -553,21 +553,25 @@ f.setOptfunctions <- function(set, k = 0){
   # Dependencies
   #   NO
 
-  #target function
+  # target function
+  # A Target function is minimized
+
   if(set$IndexFlex == TRUE)
   {
+    # set$IndexFlex == TRUE meant that you can use index futures
+    # index here is like a stock, however it's risk contribution in 0
+
     ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
     {
-      return(list("objective" =  as.matrix(-abs(c(0,t(rb_a[-1]))) %*% log(abs(x)))+ NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
-                  "gradient"  = diag(A)*as.matrix(c(0.00,abs(rb_a[-1])) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
-      ))
+      return(list("objective" =  as.matrix(-abs(c(0,t(rb_a[-1]))) %*% log(abs(x))) + NetInvLambda*sum(x)^2,
+                  "gradient"  = diag(A)*as.matrix(c(0.00,abs(rb_a[-1])) / abs(x)) + NetInvLambda*2*sum(x)))
     }
-  } else{
+  }else{
+    # Here set$IndexFlex == FALSE
     ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
     {
-      return(list("objective" =  as.matrix(-abs(t(rb_a)) %*% log(abs(x))) + NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
-                  "gradient"  = diag(A)*as.matrix(abs(rb_a) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
-      ))
+      return(list("objective" =  as.matrix(-abs(t(rb_a)) %*% log(abs(x))) + NetInvLambda*sum(x)^2,
+                  "gradient"  = diag(A)*as.matrix(abs(rb_a) / abs(x)) + NetInvLambda*2*sum(x)))
     }
   }
 
@@ -1216,6 +1220,7 @@ f.getWeightRange <- function(lb,
                              MaxRelWeight,
                              LowConvictionExitInDays = 10,
                              ConvictionGroups = 1 ){
+
   ConvictionGroups <- ConvictionGroups + 1
   groupedConviction <-  dplyr::ntile(abs(conviction),ConvictionGroups)-1
   ConvictionDegree <- pmax(1,groupedConviction)  #-1 as usually group without a bet is last, still ensure that factor is at least 1!
@@ -1543,9 +1548,6 @@ f.writeOptdetails2xlsx <- function(RCOres,Portfolio,Calcdate="",ShortIndexWithOp
   #example
   #RCOres <- RCOres; Portfolio <- "RE_EU";Calcdate="";ShortIndexWithOptimCash=0;ZeroNetInvestment=FALSE;OnlyID=FALSE
   #f.writeOptdetails2xlsx(RCOres,Portfolio,Calcdate,ShortIndexWithOptimCash,ZeroNetInvestment,OnlyID)
-
-
-
 }
 
 #Write the optimized weights into the SQL-Result-Upload table
@@ -1663,9 +1665,6 @@ f.writeRCOresToSQL <- function(res_rel,
   }else{
     stop("writeRCOresToSQL: at least one of the input parameters is of a wrong type")
   }
-  #example
-  #res_rel <- RCOres$RW[,1];res_p <- res_rel-RCOres$TARG[,"lb",1];portfolio <- "EQ_CH_L"; covID <- as.integer(7) ;setID <- as.integer(1) ;calcdatetime <- as.character(Sys.Date())
-  #f.writeRCOresToSQL(res_rel,res_p,portfolio,covID,setID,calcdatetime)
 }
 
 # Get DB connection
@@ -1946,76 +1945,91 @@ runRCOFromAPS <- function(portfolioName,
 
   # check if boundaries are compatible with the direction convictions: ADDED!
   # TODO simplify it using "all"
-  stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
+  # stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
 
-  # Get RCO optimization settings
-  RCO_settings_df <- getRCOSetSettings(RCOSetID = RCOSetID,
-                                       connection = connection)
-  # Close connection
-  RODBC::odbcClose(connection)
+  # Weight and convictions must have the same sign.
+  # Weights have lower and upper bounds
+  # lower bound >  0  --> convtiction > 0
+  # lower bound <= 0  => convtiction ANY
+  # upper bound < 0  => convtiction < 0
+  # upper bound >= 0  => convtiction ANY
+  # Non-positive upper bound leads to non-positive conviction
+  if(all((target_table$lb <= 0 | target_table$conviction >= 0) &
+         (target_table$ub >= 0 | target_table$conviction <= 0))){
 
-  covMa <- f.getCovFromSQL(RunID = covMaSetID,
-                           CalculationMethod = calc_method,
-                           WideOrLong = "wide")
+    # Get RCO optimization settings
+    RCO_settings_df <- getRCOSetSettings(RCOSetID = RCOSetID,
+                                         connection = connection)
+    # Close connection
+    RODBC::odbcClose(connection)
 
-  # TODO check dimensions -> delete if not equal to expected value
+    covMa <- f.getCovFromSQL(RunID = covMaSetID,
+                             CalculationMethod = calc_method,
+                             WideOrLong = "wide")
 
-  # reduce target_table on those with an active conviction
-  opt_weights_relative <- rep(0, length = nrow(target_table))
+    # TODO check dimensions -> delete if not equal to expected value
 
-  # The solver calculates ln(conviction*gewicht), so ln must not be 0
-  # Find which stocks have a signal (not neutral)
-  stocks_with_signal_ind <- target_table$conviction != 0
-  # Take only with a signal
-  target_table_signal <- target_table[stocks_with_signal_ind, ]
+    # reduce target_table on those with an active conviction
+    opt_weights_relative <- rep(0, length = nrow(target_table))
 
-  # The function should calculate optimal weights and update optimal weights
-  tryCatch(
-    { # Try section
+    # The solver calculates ln(conviction*gewicht), so ln must not be 0
+    # Find which stocks have a signal (not neutral)
+    stocks_with_signal_ind <- target_table$conviction != 0
+    # Take only with a signal
+    target_table_signal <- target_table[stocks_with_signal_ind, ]
 
-      # TODO first copy the function here, second use APS package
-      optimization_result_l <- f.runRCO(targ = target_table_signal,
-                                        set = RCO_settings_df,
-                                        cov = covMa)
+    # The function should calculate optimal weights and update optimal weights
+    tryCatch(
+      { # Try section
 
-    }, error = function(e){
-      print(paste0("runRCO stopped with an error: ", e))
-      stop("runRCO stopped with an error: ", e)
+        # TODO first copy the function here, second use APS package
+        optimization_result_l <- f.runRCO(targ = target_table_signal,
+                                          set = RCO_settings_df,
+                                          cov = covMa)
+
+      }, error = function(e){
+        print(paste0("runRCO stopped with an error: ", e))
+        stop("runRCO stopped with an error: ", e)
+      }
+    )
+
+    # TODO add BM weights for stocks which were not optimized in f.runRCO
+
+    # check if optimization returned a valid result
+    if(isTRUE(as.logical(optimization_result_l$optim_details["validResult"]))){
+      # The result is valid
+
+      # Optimal weights are updated in SQL table
+      opt_weights_relative <- optimization_result_l$rw
+
+      # Optimal absolute weights are (relative + bm); bm = -lb
+      opt_weights_portfolio <- optimization_result_l$pw
+
+      # Calculation timestamp
+      calcdatetime <- optimization_result_l$optim_details["Calculated"]
+
+      # Get risk contribution
+      risk_contribution <- optimization_result_l$RiskContribution
+
+      # create upload df
+      covMaSetID <- as.integer(covMaSetID)
+      RCOSetID <- as.integer(RCOSetID)
+
+      print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
+
+      f.writeRCOresToSQL(res_rel = opt_weights_relative * 100,#sql-table stores values in Percentage
+                         res_p = opt_weights_portfolio * 100, #sql-table stores values in Percentage
+                         risk_contribution = risk_contribution,
+                         portfolio = portfolioName,
+                         covID = covMaSetID,
+                         setID = RCOSetID,
+                         calcdatetime = calcdatetime)
+
+    }else{
+      stop("runRCOFromAPS: no valid result found in optimization")
     }
-  )
-
-  # check if optimization returned a valid result
-  if(isTRUE(as.logical(optimization_result_l$optim_details["validResult"]))){
-    # The result is valid
-
-    # Optimal weights are updated in SQL table
-    opt_weights_relative <- optimization_result_l$rw
-
-    # Optimal absolute weights are (relative + bm); bm = -lb
-    opt_weights_portfolio <- optimization_result_l$pw
-
-    # Calculation timestamp
-    calcdatetime <- optimization_result_l$optim_details["Calculated"]
-
-    # Get risk contribution
-    risk_contribution <- optimization_result_l$RiskContribution
-
-    # create upload df
-    covMaSetID <- as.integer(covMaSetID)
-    RCOSetID <- as.integer(RCOSetID)
-
-    print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
-
-    f.writeRCOresToSQL(res_rel = opt_weights_relative * 100,#sql-table stores values in Percentage
-                       res_p = opt_weights_portfolio * 100, #sql-table stores values in Percentage
-                       risk_contribution = risk_contribution,
-                       portfolio = portfolioName,
-                       covID = covMaSetID,
-                       setID = RCOSetID,
-                       calcdatetime = calcdatetime)
-
   }else{
-    stop("no valid result found in optimization")
+    stop("runRCOFromAPS: Bounds and convictions are logically inconsistent")
   }
 }
 
