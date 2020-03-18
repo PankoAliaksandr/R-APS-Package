@@ -4,16 +4,16 @@
     "created" : 1584109091008.000,
     "dirty" : false,
     "encoding" : "UTF-8",
-    "folds" : "194|53|548|0|\n551|42|747|0|\n751|1|779|2|\n783|1|821|2|\n825|90|906|0|\n910|1|945|2|\n1119|35|1178|0|\n1181|66|1209|0|\n",
+    "folds" : "552|42|748|0|\n752|1|780|2|\n784|1|822|2|\n826|90|907|0|\n911|1|946|2|\n1120|35|1179|0|\n1182|66|1210|0|\n",
     "hash" : "0",
     "id" : "11538EDA",
-    "lastKnownWriteTime" : 1584536178,
-    "last_content_update" : 1584537549581,
+    "lastKnownWriteTime" : 1584538522,
+    "last_content_update" : 1584538522103,
     "path" : "G:/FAP/Equities/Betsizing/Code/RCO.R",
     "project_path" : null,
     "properties" : {
-        "cursorPosition" : "551,0",
-        "scrollLine" : "186"
+        "cursorPosition" : "404,0",
+        "scrollLine" : "402"
     },
     "relative_order" : 3,
     "source_on_save" : false,

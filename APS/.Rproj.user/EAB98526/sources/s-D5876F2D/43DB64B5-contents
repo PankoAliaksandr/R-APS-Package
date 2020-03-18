@@ -1121,7 +1121,8 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
           # TODO do we need another attempt here?
           # Is it possible that target function will not be Inf next time?
         }
-      }else if(any(check_sign_v == 0)){
+      }else if(all(check_sign_v >= 0) &&
+               any(check_sign_v == 0)){
         # This case can be valid only if conviction = 0 and weight = 0
         # Actually, here convictions are not supposed to be = 0, but still...
         ind_0_conv <- which(targ$conviction) == 0
