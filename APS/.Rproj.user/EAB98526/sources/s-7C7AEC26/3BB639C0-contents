@@ -1,0 +1,13 @@
+\name{FAFunc.FindNewestCovInDB}
+\alias{FAFunc.FindNewestCovInDB}
+\title{FAFunc.FindNewestCovInDB}
+\usage{FAFunc.FindNewestCovInDB(RelOrAbsReturn,
+                                Portfolioname,
+                                NotNeverThan)}
+\description{Find the newest Covariance Matrix in the DB that is calculated with the chosen Returns and by the chosen Calculation Method.}
+\arguments{
+  \item{RelOrAbsReturn}{type of returns}
+  \item{Portfolioname}{portfolio names}
+  \item{NotNeverThan}{set to a date value to get the newest CovarianceMatrix before that date}
+}
+%\examples{isDate(mydate, format = "\%Y-\%m-\%d")}

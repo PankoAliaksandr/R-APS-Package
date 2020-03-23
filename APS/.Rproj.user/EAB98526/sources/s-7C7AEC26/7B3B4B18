@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1584986681275.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "7B3B4B18",
+    "lastKnownWriteTime" : 1584990269,
+    "last_content_update" : 1584990269803,
+    "path" : "C:/Projects/Rpackage/APS/man/f.writeOptdetails2xlsx.Rd",
+    "project_path" : "man/f.writeOptdetails2xlsx.Rd",
+    "properties" : {
+        "cursorPosition" : "16,52",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 8,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_doc"
+}

@@ -71,7 +71,7 @@ if(length(call_params) > 0){
                 RCOSetID = call_params[4],
                 isReal = FALSE,
                 calc_method = calc_method)
-  
+
 }else{
   # length(call_params) <= 0
   print("No arguments provided")

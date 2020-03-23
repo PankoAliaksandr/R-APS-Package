@@ -1,0 +1,9 @@
+\name{f.delete_infeasible_settings}
+\alias{f.delete_infeasible_settings}
+\title{f.delete_infeasible_settings}
+\usage{f.delete_infeasible_settings(SET)}
+\description{delete infeasible settings}
+\arguments{
+  \item{SET}{settings 3D array}
+}
+%\examples{isDate(mydate, format = "\%Y-\%m-\%d")}

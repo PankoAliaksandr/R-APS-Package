@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1584627053209.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "2F471AF8",
+    "lastKnownWriteTime" : 1584956830,
+    "last_content_update" : 1584956830713,
+    "path" : "C:/Projects/Rpackage/APS/man/runRCOLoops.Rd",
+    "project_path" : "man/runRCOLoops.Rd",
+    "properties" : {
+        "cursorPosition" : "42,20",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 5,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_doc"
+}
