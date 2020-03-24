@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1584460304403.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "75|53|88|0|\n90|49|118|0|\n120|52|171|0|\n173|64|202|0|\n304|81|355|0|\n480|36|489|0|\n492|46|537|0|\n540|42|736|0|\n745|52|766|0|\n801|35|859|0|\n862|80|911|0|\n915|53|1270|0|\n1357|29|1360|6|\n1424|67|1506|0|\n1509|47|1534|0|\n1542|52|1617|0|\n1643|2|1987|0|\n",
+    "hash" : "4237925284",
+    "id" : "43DB64B5",
+    "lastKnownWriteTime" : 1585057655,
+    "last_content_update" : 1585057655383,
+    "path" : "C:/Projects/Rpackage/APS/R/APS_functions.R",
+    "project_path" : "R/APS_functions.R",
+    "properties" : {
+        "cursorPosition" : "1405,18",
+        "scrollLine" : "1401"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

@@ -12,10 +12,10 @@
     "path" : "G:/FAP/Equities/Betsizing/Code/RCO.R",
     "project_path" : null,
     "properties" : {
-        "cursorPosition" : "1504,6",
-        "scrollLine" : "1493"
+        "cursorPosition" : "15,39",
+        "scrollLine" : "0"
     },
-    "relative_order" : 5,
+    "relative_order" : 7,
     "source_on_save" : false,
     "source_window" : "",
     "type" : "r_source"

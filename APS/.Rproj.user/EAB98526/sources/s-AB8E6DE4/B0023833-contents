@@ -65,7 +65,7 @@ if(length(call_params) > 0){
   print(paste("For the Covariance Matrix is the CalcMethod '",calc_method,"' used",sep=""))
 
   # Run main function with required params
-  runRCOFromAPS(portfolioName = call_params[1],
+  APS::runRCOFromAPS(portfolioName = call_params[1],
                 calculation_date = date,
                 covMaSetID = call_params[3],
                 RCOSetID = call_params[4],

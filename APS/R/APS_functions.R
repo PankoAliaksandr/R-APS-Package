@@ -266,7 +266,7 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 
             result_df$Tradeability <- const_tradeability
 
-            rownames(result_df) <- result_df$Ticker
+            row.names(result_df) <- result_df$Ticker
             # Delete 2 columns
             result_df <- result_df[,!colnames(result_df) %in% c("Ticker", "BenchmarkConstituentWeightInPercent")]
 
@@ -356,9 +356,9 @@ f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long"))
 }
 
 #Write the optimized weights into the SQL-Result-Upload table
-f.writeRCOresToSQL <- function(res_rel,
-                               res_p,
-                               risk_contribution,
+f.writeRCOresToSQL <- function(opt_rel_weights_v,
+                               opt_abs_weights_v,
+                               risk_contribution_v,
                                portfolio,
                                covID,
                                setID,
@@ -390,43 +390,44 @@ f.writeRCOresToSQL <- function(res_rel,
   #                        opt_weights_portfolio,
   #                        portfolio,covID,setID,calcdatetime)
 
-
-  # TODO rename res_rel in opt_rel_weights
-  # TODO rename res_p in opt_abs_weights
-  # TODO rename portfolio in AP_name
-
-
-  if(class(res_rel) == "numeric" &&
-     class(res_p) == "numeric" &&
-     class(risk_contribution) == "numeric" &&
+  if(class(opt_rel_weights_v) == "numeric" &&
+     class(opt_abs_weights_v) == "numeric" &&
+     class(risk_contribution_v) == "numeric" &&
      class(portfolio) == "character" &&
      class(covID) == "integer" &&
      class(setID) == "integer" &&
      class(calcdatetime) == "character"){
 
     # Input has right type
-    constituents <- names(res_p)
+    constituents_v <- names(opt_abs_weights_v)
 
     # Values must be listed in the same order
-    if(all(names(res_rel) == constituents) &&
-       all(names(risk_contribution) == constituents)){
+    if(isFALSE(is.null(names(opt_rel_weights_v))) &&
+       isFALSE(is.null(names(risk_contribution_v))) &&
+       isFALSE(is.null(names(opt_abs_weights_v))) &&
+       all(names(opt_rel_weights_v) == constituents_v) &&
+       all(names(risk_contribution_v) == constituents_v)){
 
       # Constituents' optimized absolute and relative weights have the same order
-      n_constituents <- length(res_p)
+      n_constituents <- length(opt_abs_weights_v)
+
       # Portfolio must be the same for all constituents
-      portfolio <- rep(x = portfolio, times = n_constituents)
+      calcdatetime_v <- rep(x = calcdatetime, times = n_constituents)
+      portfolio_v <- rep(x = portfolio, times = n_constituents)
+      covID_v <- rep(covID, times = n_constituents)
+      setID_v <- rep(setID, times = n_constituents)
 
       # Prepare table structure
       # This part is very tricky, sqlSave parameters leads to bug.
       df_to_upload <- data.frame(CalculationRCOResultForUploadID = seq(1:n_constituents),
-                                 CalculationDate = calcdatetime,
-                                 FKAPS = portfolio,
-                                 FKCovMaRunID = covID,
-                                 FKCalculationRCOSettingSetID = setID,
-                                 Ticker = constituents,
-                                 OptimizedRelativeWeight = res_rel,
-                                 OptimizedPortfolioWeight = res_p,
-                                 RiskContribution = risk_contribution)
+                                 CalculationDate = calcdatetime_v,
+                                 FKAPS = portfolio_v,
+                                 FKCovMaRunID = covID_v,
+                                 FKCalculationRCOSettingSetID = setID_v,
+                                 Ticker = constituents_v,
+                                 OptimizedRelativeWeight = opt_rel_weights_v,
+                                 OptimizedPortfolioWeight = opt_abs_weights_v,
+                                 RiskContribution = risk_contribution_v)
 
       # delete current entries + Insert
       con <- FAFunc.GetDB()
@@ -465,7 +466,8 @@ f.writeRCOresToSQL <- function(res_rel,
         stop("some error in sql insert")
       }
     }else{
-      stop("The order of constituents is not the same for absolute and relative optimized weights")
+      stop("The order of constituents is not the same for absolute and relative optimized weights",
+           " or names are empty")
     }
   }else{
     stop("writeRCOresToSQL: at least one of the input parameters is of a wrong type")
@@ -572,7 +574,7 @@ f.setOptfunctions <- function(set, k = 0){
   if(set$SoftNetInvConstraint == TRUE)
   {
     # IndexFlex shows if index should be treated as normal asset or not
-    if(set$IndexFlex==TRUE)
+    if(set$IndexFlex == TRUE)
     {
       print(paste("OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range"))
 
@@ -1297,7 +1299,7 @@ runRCOFromAPS <- function(portfolioName,
   print("The process has been started")
 
   # Download [external] functions
-  source("G:/FAP/Equities/Betsizing/Code/RCO.R")
+  # source("G:/FAP/Equities/Betsizing/Code/RCO.R")
   # debug(f.runRCO)
 
   connection <- FAFunc.GetDB()
@@ -1338,9 +1340,6 @@ runRCOFromAPS <- function(portfolioName,
 
     # TODO check dimensions -> delete if not equal to expected value
 
-    # reduce target_table on those with an active conviction
-    opt_weights_relative <- rep(0, length = nrow(target_table))
-
     # The solver calculates ln(conviction*gewicht), so ln must not be 0
     # Find which stocks have a signal (not neutral)
     stocks_with_signal_ind <- target_table$conviction != 0
@@ -1365,19 +1364,40 @@ runRCOFromAPS <- function(portfolioName,
     # check if optimization returned a valid result
     if(isTRUE(as.logical(optimization_result_l$optim_details["validResult"]))){
       # The result is valid
-      opt_weights_portfolio <- opt_weights_relative <- rep(0, row(target_table))
+      # prepare output vectors
+
+      n_sec <- nrow(target_table)
+      names_sec_v <- row.names(target_table)
+
+      risk_contribution_v <- rep(0, times = n_sec)
+      opt_weights_portfolio_v <- rep(0, times = n_sec)
+      opt_weights_relative_v <- rep(0, times = n_sec)
+
+      names(risk_contribution_v) <- names_sec_v
+      names(opt_weights_portfolio_v) <- names_sec_v
+      names(opt_weights_relative_v) <- names_sec_v
 
       # Optimal weights are updated in SQL table, the rest has deault 0 (BM) weight
-      opt_weights_relative[stocks_with_signal_ind] <- optimization_result_l$rw
+      # Make sure that the order is the same
+      stopifnot(isFALSE(is.null(names(optimization_result_l$rw))))
+      stopifnot(isFALSE(is.null(names(opt_weights_relative_v[stocks_with_signal_ind]))))
+      stopifnot(names(optimization_result_l$rw) == names(opt_weights_relative_v[stocks_with_signal_ind]))
+      opt_weights_relative_v[stocks_with_signal_ind] <- optimization_result_l$rw
 
       # Optimal absolute weights are (relative + bm); bm = -lb
-      opt_weights_portfolio[stocks_with_signal_ind] <- optimization_result_l$pw
+      stopifnot(isFALSE(is.null(names(optimization_result_l$pw))))
+      stopifnot(isFALSE(is.null(names(opt_weights_portfolio_v[stocks_with_signal_ind]))))
+      stopifnot(names(optimization_result_l$pw) == names(opt_weights_portfolio_v[stocks_with_signal_ind]))
+      opt_weights_portfolio_v[stocks_with_signal_ind] <- optimization_result_l$pw
 
       # Calculation timestamp
       calcdatetime <- optimization_result_l$optim_details["Calculated"]
 
       # Get risk contribution
-      risk_contribution <- optimization_result_l$RiskContribution
+      stopifnot(isFALSE(is.null(names(optimization_result_l$RiskContribution))))
+      stopifnot(isFALSE(is.null(names(risk_contribution_v[stocks_with_signal_ind]))))
+      stopifnot(names(optimization_result_l$RiskContribution) == names(risk_contribution_v[stocks_with_signal_ind]))
+      risk_contribution_v[stocks_with_signal_ind] <- optimization_result_l$RiskContribution
 
       # create upload df
       covMaSetID <- as.integer(covMaSetID)
@@ -1385,9 +1405,9 @@ runRCOFromAPS <- function(portfolioName,
 
       print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
 
-      f.writeRCOresToSQL(res_rel = opt_weights_relative * 100,#sql-table stores values in Percentage
-                         res_p = opt_weights_portfolio * 100, #sql-table stores values in Percentage
-                         risk_contribution = risk_contribution,
+      f.writeRCOresToSQL(opt_rel_weights_v = opt_weights_relative_v * 100,#sql-table stores values in Percentage
+                         opt_abs_weights_v = opt_weights_portfolio_v * 100, #sql-table stores values in Percentage
+                         risk_contribution_v = risk_contribution_v,
                          portfolio = portfolioName,
                          covID = covMaSetID,
                          setID = RCOSetID,

@@ -266,12 +266,12 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
 
             result_df$Tradeability <- const_tradeability
 
-            rownames(result_df) <- result_df$Ticker
+            row.names(result_df) <- result_df$Ticker
             # Delete 2 columns
             result_df <- result_df[,!colnames(result_df) %in% c("Ticker", "BenchmarkConstituentWeightInPercent")]
 
-            targ_names <- c("conviction", "lb","ub","RiskBudget", "tradeability")
-            colnames(result_df) <- targ_names
+            targ_col_names_v <- c("conviction", "lb","ub","RiskBudget", "tradeability")
+            colnames(result_df) <- targ_col_names_v
 
             return(result_df)
           }
@@ -356,9 +356,9 @@ f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long"))
 }
 
 #Write the optimized weights into the SQL-Result-Upload table
-f.writeRCOresToSQL <- function(res_rel,
-                               res_p,
-                               risk_contribution,
+f.writeRCOresToSQL <- function(opt_rel_weights_v,
+                               opt_abs_weights_v,
+                               risk_contribution_v,
                                portfolio,
                                covID,
                                setID,
@@ -390,43 +390,44 @@ f.writeRCOresToSQL <- function(res_rel,
   #                        opt_weights_portfolio,
   #                        portfolio,covID,setID,calcdatetime)
 
-
-  # TODO rename res_rel in opt_rel_weights
-  # TODO rename res_p in opt_abs_weights
-  # TODO rename portfolio in AP_name
-
-
-  if(class(res_rel) == "numeric" &&
-     class(res_p) == "numeric" &&
-     class(risk_contribution) == "numeric" &&
+  if(class(opt_rel_weights_v) == "numeric" &&
+     class(opt_abs_weights_v) == "numeric" &&
+     class(risk_contribution_v) == "numeric" &&
      class(portfolio) == "character" &&
      class(covID) == "integer" &&
      class(setID) == "integer" &&
      class(calcdatetime) == "character"){
 
     # Input has right type
-    constituents <- names(res_p)
+    constituents_v <- names(opt_abs_weights_v)
 
     # Values must be listed in the same order
-    if(all(names(res_rel) == constituents) &&
-       all(names(risk_contribution) == constituents)){
+    if(isFALSE(is.null(names(opt_rel_weights_v))) &&
+       isFALSE(is.null(names(risk_contribution_v))) &&
+       isFALSE(is.null(names(opt_abs_weights_v))) &&
+       all(names(opt_rel_weights_v) == constituents_v) &&
+       all(names(risk_contribution_v) == constituents_v)){
 
       # Constituents' optimized absolute and relative weights have the same order
-      n_constituents <- length(res_p)
+      n_constituents <- length(opt_abs_weights_v)
+
       # Portfolio must be the same for all constituents
-      portfolio <- rep(x = portfolio, times = n_constituents)
+      calcdatetime_v <- rep(x = calcdatetime, times = n_constituents)
+      portfolio_v <- rep(x = portfolio, times = n_constituents)
+      covID_v <- rep(covID, times = n_constituents)
+      setID_v <- rep(setID, times = n_constituents)
 
       # Prepare table structure
       # This part is very tricky, sqlSave parameters leads to bug.
       df_to_upload <- data.frame(CalculationRCOResultForUploadID = seq(1:n_constituents),
-                                 CalculationDate = calcdatetime,
-                                 FKAPS = portfolio,
-                                 FKCovMaRunID = covID,
-                                 FKCalculationRCOSettingSetID = setID,
-                                 Ticker = constituents,
-                                 OptimizedRelativeWeight = res_rel,
-                                 OptimizedPortfolioWeight = res_p,
-                                 RiskContribution = risk_contribution)
+                                 CalculationDate = calcdatetime_v,
+                                 FKAPS = portfolio_v,
+                                 FKCovMaRunID = covID_v,
+                                 FKCalculationRCOSettingSetID = setID_v,
+                                 Ticker = constituents_v,
+                                 OptimizedRelativeWeight = opt_rel_weights_v,
+                                 OptimizedPortfolioWeight = opt_abs_weights_v,
+                                 RiskContribution = risk_contribution_v)
 
       # delete current entries + Insert
       con <- FAFunc.GetDB()
@@ -465,13 +466,14 @@ f.writeRCOresToSQL <- function(res_rel,
         stop("some error in sql insert")
       }
     }else{
-      stop("The order of constituents is not the same for absolute and relative optimized weights")
+      stop("The order of constituents is not the same for absolute and relative optimized weights",
+           " or names are empty")
     }
   }else{
     stop("writeRCOresToSQL: at least one of the input parameters is of a wrong type")
   }
   #example
-  #res_rel <- RCOres$RW[,1];res_p <- res_rel-RCOres$TARG[,"lb",1];portfolio <- "EQ_CH_L"; covID <- as.integer(7) ;setID <- as.integer(1) ;calcdatetime <- as.character(Sys.Date())
+  #res_rel <- RCOres$RW[,1];res_p <- res_rel-RCOres$targ_3D_array[,"lb",1];portfolio <- "EQ_CH_L"; covID <- as.integer(7) ;setID <- as.integer(1) ;calcdatetime <- as.character(Sys.Date())
   #f.writeRCOresToSQL(res_rel,res_p,portfolio,covID,setID,calcdatetime)
 }
 
@@ -540,21 +542,25 @@ f.setOptfunctions <- function(set, k = 0){
   # Dependencies
   #   NO
 
-  #target function
+  # target function
+  # A Target function is minimized
+
   if(set$IndexFlex == TRUE)
   {
+    # set$IndexFlex == TRUE meant that you can use index futures
+    # index here is like a stock, however it's risk contribution in 0
+
     ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
     {
-      return(list("objective" =  as.matrix(-abs(c(0,t(rb_a[-1]))) %*% log(abs(x)))+ NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
-                  "gradient"  = diag(A)*as.matrix(c(0.00,abs(rb_a[-1])) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
-      ))
+      return(list("objective" =  as.matrix(-abs(c(0,t(rb_a[-1]))) %*% log(abs(x))) + NetInvLambda*sum(x)^2,
+                  "gradient"  = diag(A)*as.matrix(c(0.00,abs(rb_a[-1])) / abs(x)) + NetInvLambda*2*sum(x)))
     }
-  } else{
+  }else{
+    # Here set$IndexFlex == FALSE
     ftarget <- function(x,rb_a,COVAR,target_te,A,CashTolerance,LeverageTolerance,NetInvLambda)
     {
-      return(list("objective" =  as.matrix(-abs(t(rb_a)) %*% log(abs(x))) + NetInvLambda*sum(x)^2, #+ NetInvLambda*abs(sum(x)) ,
-                  "gradient"  = diag(A)*as.matrix(abs(rb_a) / abs(x)) + NetInvLambda*2*sum(x)    # + NetInvLambda*diag(A)
-      ))
+      return(list("objective" =  as.matrix(-abs(t(rb_a)) %*% log(abs(x))) + NetInvLambda*sum(x)^2,
+                  "gradient"  = diag(A)*as.matrix(abs(rb_a) / abs(x)) + NetInvLambda*2*sum(x)))
     }
   }
 
@@ -568,7 +574,7 @@ f.setOptfunctions <- function(set, k = 0){
   if(set$SoftNetInvConstraint == TRUE)
   {
     # IndexFlex shows if index should be treated as normal asset or not
-    if(set$IndexFlex==TRUE)
+    if(set$IndexFlex == TRUE)
     {
       print(paste("OPTIMIZE: with flexible index, nlcon keeps NetInvestment within range"))
 
@@ -754,9 +760,9 @@ f.getWeightRange <- function(lb,
               ConvictionDegree = ConvictionDegree))
 
   #examples
-  #t <- as.data.frame(RCOres$TARG[,,1]); lb <- t$lb;ub <- t$ub;conviction <- t$conviction;tr <- t$tradeability
+  #t <- as.data.frame(RCOres$targ_3D_array[,,1]); lb <- t$lb;ub <- t$ub;conviction <- t$conviction;tr <- t$tradeability
   #g1 <- f.getWeightRange(lb,ub,conviction,tr,0.1,LowConvictionExitInDays = 20,ConvictionGroups=7)
-  #cbind(rownames(targ),g1$w_min,g1$w_max,conviction,g1$ConvictionDegree)
+  #cbind(rownames(targ_df),g1$w_min,g1$w_max,conviction,g1$ConvictionDegree)
 
 }
 
@@ -787,7 +793,7 @@ ImplIndexPosition <- function(w, w_bm, ZeroNetInvestment = FALSE){
   return(w)
 
   #example (needs an existing result in RCOres-form)
-  # w <- RCOres$RW[,1];w_bm <- -RCOres$TARG[-1,"lb",1];ZeroNetInvestment <- FALSE
+  # w <- RCOres$RW[,1];w_bm <- -RCOres$targ_3D_array[-1,"lb",1];ZeroNetInvestment <- FALSE
   #ImplIndexPosition(w,w_bm)
 }
 
@@ -900,7 +906,7 @@ OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target){
               total_rb_dev = total_rb_dev))
 
   #example (needs an existing result in RCOres-form)
-  # rw <- RCOres$RW[,1] ; cov <- RCOres$COV[,,1]; lb <- RCOres$TARG[,"lb",1]; ub <- RCOres$TARG[,"ub",1]; rb_target <- RCOres$TARG[,"RiskBudget",1]
+  # rw <- RCOres$RW[,1] ; cov <- RCOres$COV[,,1]; lb <- RCOres$targ_3D_array[,"lb",1]; ub <- RCOres$targ_3D_array[,"ub",1]; rb_target <- RCOres$targ_3D_array[,"RiskBudget",1]
   # (ocr <- OptimizationResultsCharacteristics(rw,cov,lb,ub,set,rb_target)
 
 }
@@ -988,6 +994,12 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
   #option settings
   local_opts <- list( "algorithm" = "NLOPT_LD_SLSQP",
                       "xtol_rel" = 10 ^ -13 )
+
+  # Tolerance Options: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/
+  # ftol_rel - relative change in target function value ( better to use if f.val != 0)
+  # ftol_abs - absolute change in target tunction value (use if the value is close to 0)
+  # xtol_rel - relative change in solution value ( better to use if val != 0)
+  # xtol_abs - absolute change in solution value (use if the value is close to 0)
 
   opts <- list("algorithm" = as.character(set$algo),
                "maxeval" = as.numeric(set$Trials),
@@ -1111,14 +1123,15 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
           # TODO do we need another attempt here?
           # Is it possible that target function will not be Inf next time?
         }
-      }else if(any(check_sign_v == 0)){
+      }else if(all(check_sign_v >= 0) &&
+               any(check_sign_v == 0)){
         # This case can be valid only if conviction = 0 and weight = 0
         # Actually, here convictions are not supposed to be = 0, but still...
         ind_0_conv <- which(targ$conviction) == 0
         ind_0_weight <- which(opt_output$solution) == 0
 
         # at least one is not empty here
-        if(length(ind_0_conv) == length(ind_0_conv) &&
+        if(length(ind_0_conv) == length(ind_0_weight) &&
            all(ind_0_conv == ind_0_weight)){
           # Valid: 0 weights correspond to 0 convictions
 
@@ -1165,15 +1178,6 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
 
         # set loop control variable
         runAnotherOptAttempt <- ifelse(attempt <= MaxAttempts, TRUE, FALSE)
-
-        # Tolerance Options: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/
-          # ftol_rel - relative change in target function value
-          # ftol_abs - absolute change in target tunction value
-          # xtol_rel - relative change in solution value
-          # xtol_abs - absolute change in solution value
-
-
-
 
         # Update required accuracy
         # TODO check if this is right variable to change. maybe  opts$tol.. is required instead
@@ -1295,7 +1299,7 @@ runRCOFromAPS <- function(portfolioName,
   print("The process has been started")
 
   # Download [external] functions
-  source("G:/FAP/Equities/Betsizing/Code/RCO.R")
+  # source("G:/FAP/Equities/Betsizing/Code/RCO.R")
   # debug(f.runRCO)
 
   connection <- FAFunc.GetDB()
@@ -1315,1130 +1319,670 @@ runRCOFromAPS <- function(portfolioName,
 
   # check if boundaries are compatible with the direction convictions: ADDED!
   # TODO simplify it using "all"
-  stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
 
-  # Get RCO optimization settings
-  RCO_settings_df <- getRCOSetSettings(RCOSetID = RCOSetID,
-                                       connection = connection)
-  # Close connection
-  RODBC::odbcClose(connection)
 
-  covMa <- f.getCovFromSQL(RunID = covMaSetID,
-                           CalculationMethod = calc_method,
-                           WideOrLong = "wide")
+  # Weight and convictions must have the same sign.
+  # Weights have lower and upper bounds
+  # stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
+  # How to read: "any() == FALSE" means "There are no"
+  if(any((target_table$lb >= 0 & target_table$conviction < 0) == FALSE) &&
+     any((target_table$ub <= 0 & target_table$conviction > 0) == FALSE)){
 
-  # TODO check dimensions -> delete if not equal to expected value
+    # Get RCO optimization settings
+    RCO_settings_df <- getRCOSetSettings(RCOSetID = RCOSetID,
+                                         connection = connection)
+    # Close connection
+    RODBC::odbcClose(connection)
 
-  # reduce target_table on those with an active conviction
-  opt_weights_relative <- rep(0, length = nrow(target_table))
+    covMa <- f.getCovFromSQL(RunID = covMaSetID,
+                             CalculationMethod = calc_method,
+                             WideOrLong = "wide")
 
-  # The solver calculates ln(conviction*gewicht), so ln must not be 0
-  # Find which stocks have a signal (not neutral)
-  stocks_with_signal_ind <- target_table$conviction != 0
-  # Take only with a signal
-  target_table_signal <- target_table[stocks_with_signal_ind, ]
+    # TODO check dimensions -> delete if not equal to expected value
 
-  # The function should calculate optimal weights and update optimal weights
-  tryCatch(
-    { # Try section
+    # The solver calculates ln(conviction*gewicht), so ln must not be 0
+    # Find which stocks have a signal (not neutral)
+    stocks_with_signal_ind <- target_table$conviction != 0
+    # Take only with a signal
+    target_table_signal <- target_table[stocks_with_signal_ind, ]
 
-      # TODO first copy the function here, second use APS package
-      optimization_result_l <- f.runRCO(targ = target_table_signal,
-                                        set = RCO_settings_df,
-                                        cov = covMa)
+    # The function should calculate optimal weights and update optimal weights
+    tryCatch(
+      { # Try section
 
-    }, error = function(e){
-      print(paste0("runRCO stopped with an error: ", e))
-      stop("runRCO stopped with an error: ", e)
+        # TODO first copy the function here, second use APS package
+        optimization_result_l <- f.runRCO(targ = target_table_signal,
+                                          set = RCO_settings_df,
+                                          cov = covMa)
+
+      }, error = function(e){
+        print(paste0("runRCO stopped with an error: ", e))
+        stop("runRCO stopped with an error: ", e)
+      }
+    )
+
+    # check if optimization returned a valid result
+    if(isTRUE(as.logical(optimization_result_l$optim_details["validResult"]))){
+      # The result is valid
+      # prepare output vectors
+
+      n_sec <- nrow(target_table)
+      names_sec_v <- row.names(target_table)
+
+      risk_contribution_v <- rep(0, times = n_sec)
+      opt_weights_portfolio_v <- rep(0, times = n_sec)
+      opt_weights_relative_v <- rep(0, times = n_sec)
+
+      names(risk_contribution_v) <- names_sec_v
+      names(opt_weights_portfolio_v) <- names_sec_v
+      names(opt_weights_relative_v) <- names_sec_v
+
+      # Optimal weights are updated in SQL table, the rest has deault 0 (BM) weight
+      # Make sure that the order is the same
+      stopifnot(isFALSE(is.null(names(optimization_result_l$rw))))
+      stopifnot(isFALSE(is.null(names(opt_weights_relative_v[stocks_with_signal_ind]))))
+      stopifnot(names(optimization_result_l$rw) == names(opt_weights_relative_v[stocks_with_signal_ind]))
+      opt_weights_relative_v[stocks_with_signal_ind] <- optimization_result_l$rw
+
+      # Optimal absolute weights are (relative + bm); bm = -lb
+      stopifnot(isFALSE(is.null(names(optimization_result_l$pw))))
+      stopifnot(isFALSE(is.null(names(opt_weights_portfolio_v[stocks_with_signal_ind]))))
+      stopifnot(names(optimization_result_l$pw) == names(opt_weights_portfolio_v[stocks_with_signal_ind]))
+      opt_weights_portfolio_v[stocks_with_signal_ind] <- optimization_result_l$pw
+
+      # Calculation timestamp
+      calcdatetime <- optimization_result_l$optim_details["Calculated"]
+
+      # Get risk contribution
+      stopifnot(isFALSE(is.null(names(optimization_result_l$RiskContribution))))
+      stopifnot(isFALSE(is.null(names(risk_contribution_v[stocks_with_signal_ind]))))
+      stopifnot(names(optimization_result_l$RiskContribution) == names(risk_contribution_v[stocks_with_signal_ind]))
+      risk_contribution_v[stocks_with_signal_ind] <- optimization_result_l$RiskContribution
+
+      # create upload df
+      covMaSetID <- as.integer(covMaSetID)
+      RCOSetID <- as.integer(RCOSetID)
+
+      print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
+
+      f.writeRCOresToSQL(opt_rel_weights_v = opt_weights_relative_v * 100,#sql-table stores values in Percentage
+                         opt_abs_weights_v = opt_weights_portfolio_v * 100, #sql-table stores values in Percentage
+                         risk_contribution_v = risk_contribution_v,
+                         portfolio = portfolioName,
+                         covID = covMaSetID,
+                         setID = RCOSetID,
+                         calcdatetime = calcdatetime)
+
+    }else{
+      stop("runRCOFromAPS: no valid result found in optimization")
     }
-  )
-
-  # check if optimization returned a valid result
-  if(isTRUE(as.logical(optimization_result_l$optim_details["validResult"]))){
-    # The result is valid
-
-    # Optimal weights are updated in SQL table
-    opt_weights_relative <- optimization_result_l$rw
-
-    # Optimal absolute weights are (relative + bm); bm = -lb
-    opt_weights_portfolio <- optimization_result_l$pw
-
-    # Calculation timestamp
-    calcdatetime <- optimization_result_l$optim_details["Calculated"]
-
-    # Get risk contribution
-    risk_contribution <- optimization_result_l$RiskContribution
-
-    # create upload df
-    covMaSetID <- as.integer(covMaSetID)
-    RCOSetID <- as.integer(RCOSetID)
-
-    print("Try to call f.writeRCOresToSQL from runRCOFromAPS")
-
-    f.writeRCOresToSQL(res_rel = opt_weights_relative * 100,#sql-table stores values in Percentage
-                       res_p = opt_weights_portfolio * 100, #sql-table stores values in Percentage
-                       risk_contribution = risk_contribution,
-                       portfolio = portfolioName,
-                       covID = covMaSetID,
-                       setID = RCOSetID,
-                       calcdatetime = calcdatetime)
-
   }else{
-    stop("no valid result found in optimization")
+    stop("runRCOFromAPS: Bounds and convictions are logically inconsistent")
   }
 }
-#
-#
-#
-# #RCO RISK CONTRIBUTION OPTIMIZER
-#
-# # First load required functions
-# source("G:/FAP/Equities/Betsizing/Code/R_customized_FAFunc.R")
-#
-# runRCOLoops <- function(Portfolio,                 #character string of the portfolio. used to identify the targ-file to load
-#                         TargetTE,                            #Target Tracking error as numeric or numeric vector (to vary through settings)
-#                         MaxRelWeight = 0.1,                 #Maximum relative Weigth (under- or over-)
-#                         Trials = 10000,                      #Limit of Trials for the optimizer. as numeric or nusec_nrmeric vector (to vary through settings)
-#                         algo = "NLOPT_LD_SLSQP",         #algo that nloptr uses as character or character vector  (to vary through settings):  "NLOPT_GN_ISRES" non gradient; "NLOPT_LD_SLSQP" with Gradient, FAILED: "NLOPT_GD_STOGO","NLOPT_GD_STOGO_RAND"
-#                         CashTolerance = 0.0025,              #Boundary for the Cash held (conditon is: -sum(w)>CashTolerance)
-#                         LeverageTolerance = 0.0025,          #Boundary for the Leverage held (condition is sum(w)<LeverageTolearnce)
-#                         CovCalcWay="nlshrink",               #Covariance calculation setting for SQL-Covariance. #c("nlshrink","cov")
-#                         CovReturns="abs",                    #Covariance calculation setting for SQL-Covariance. #c("abs","rel")
-#                         ShortIndexWithOptimCash=0,           #set 0 or 1 to implement the optimized Cash position by shorting the ind   ex via selling proportional weights in each index-member
-#                         InputParameters="Signals4R",         #character string like fitting the variable input in the specified targ-sheet
-#                         Specif_COV=NA,                        #set specific covariance ID, -10 for testing and NA for most recent available for the chosen portfolio
-#                         xtol_rel=10^-7,
-#                         IndexFlex=FALSE,
-#                         Ix_eq_Cash =FALSE,
-#                         NetInvLambda = 0                        #punishment factor for NetInvestments <>0
-#                         #,FixedCashRisk = 0                     #fixed cash risk in the portfolio that needs to be taken into account!
-#                         ,LowConvictionExitInDays = 10
-#                         ,ConvictionGroups = 3
-#                         ,MaxAttempts=2
-#                         #,convictionInputFrom = c("xls","simts") #new parameter
-# ){
-#   ######load libraries
-#   ipak(c( "dplyr", "reshape"))
-#
-#   print("starting...")
-#   #checks
-#   stopifnot(length(ShortIndexWithOptimCash)==1)
-#
-#   ######Prepare to get Data######################################
-#   #define file pathes (add switch to specify exact location for each portfolio)
-#   if(Portfolio=="RE_EU")
-#   {file_path_in <- "G:/FAP/Immobilien_Modell/"
-#   input_file <- "Betsizing.xlsx"
-#   #}else if (Portfolio == "RE_CH")
-#   #{file_path_in <- "G:/FAP/Indirekte Immo/osm/Diverses/"
-#   #input_file <- "Indirekte_Immobilienanlagen_2018-HJ2_Copy.xlsx"
-#   }else {
-#     file_path_in <- "G:/FAP/Equities/Betsizing/"
-#     input_file <- paste("bet_targets_",Portfolio,".xlsx",sep="",collapse="")     #"bet_targets_epra.csv"              #"bet_targets_epra.csv"
-#   }
-#
-#   file_path_out <- paste("G:/FAP/Equities/Betsizing/R_results/",Portfolio,"/",sep="",collapse="")
-#   output_file <- paste(Portfolio,"_",Sys.Date(),".xlsx",sep="",collapse="")
-#
-#   #####Create Settings matrix#####
-#   ipak("gridExtra")
-#   SET <- as.data.frame(expand.grid(
-#     TargetTE=TargetTE,
-#     MaxRelWeight=MaxRelWeight,
-#     Trials=Trials,
-#     xtol_rel=xtol_rel,
-#     algo=algo,
-#     CashTolerance=CashTolerance,
-#     LeverageTolerance=LeverageTolerance,
-#     CovCalcWay=CovCalcWay,
-#     CovReturns=CovReturns,
-#     InputParameters=InputParameters,
-#     ShortIndexWithOptimCash=ShortIndexWithOptimCash,
-#     Specif_COV=Specif_COV,
-#     IndexFlex=IndexFlex,
-#     Ix_eq_Cash=Ix_eq_Cash,
-#     NetInvLambda=NetInvLambda
-#     #,FixedCashRisk=FixedCashRisk
-#     ,LowConvictionExitInDays=LowConvictionExitInDays
-#     ,ConvictionGroups=ConvictionGroups,
-#     stringsAsFactors=FALSE)
-#   )
-#   #sort data Frame
-#   SET <- SET[with(SET,order(InputParameters,Specif_COV)),]
-#
-#   SET <- f.delete_infeasible_settings(SET)
-#
-#   ######START LOOP###############################################
-#   loop.nr <- nrow(SET)
-#   SET$setID <- 1:loop.nr
-#
-#   optim_details <- NULL
-#   rw <- NULL
-#   COV <- NULL
-#
-#   con<-FAFunc.GetDB()
-#
-#   for (k in 1:loop.nr)
-#   {
-#     print(paste(Sys.time()," started loop  ",k, " of ",loop.nr,sep=""))
-#     set<-SET[k,]
-#
-#     #stopifnot(set$algo %in% c(algo_lagrange,algo_gradient,"NLOPT_GN_ISRES"))#implemented algorithms
-#     print(set)
-#
-#     ####get data ready####
-#     #reload targ-file if needed
-#     if(k == 1 ||                                                                 #reload for first year
-#        identical(SET$InputParameters[max(1,k-1)],set$InputParameters) == FALSE) #reload file if input-sheet changed
-#     {
-#       print(paste("reload data for sheet ",set$InputParameters," and CovarianceID",set$Specif_COV))
-#       #get risk budget targets, lower bounds for each ticker,
-#       ipak("xlsx")
-#       targ_names <- c("lb","ub","conviction","RiskBudget","tradeability")
-#       targ <- read.xlsx(paste(file_path_in,input_file,sep="",collapse=""),sheetName=as.character(set$InputParameters))
-#       #check for duplicated tickers (not allowed ???)
-#       stopifnot(length(unique(targ$Ticker)) == nrow(targ$Ticker))
-#       targ <- targ[!is.na(targ$Ticker),]
-#       rownames(targ) <- targ$Ticker
-#       targ <- targ[,targ_names]
-#       targ <- targ[is.na(targ[,"RiskBudget"])==FALSE,] #remove possible NA risk budgets
-#
-#       if(k!=1)
-#       {
-#         if(identical(row.names(TARG),row.names(targ))){
-#           TARG[,,set$InputParameters] <- as.matrix(targ[,targ_names])
-#         }else{stop(paste("Tickers dont match adjust in targ-file!!! sheet:",set$InputParameters))}
-#       }
-#       sec_nr <- nrow(targ)
-#       #targ$targ_id <- 1:sec_nr
-#
-#
-#       #check if boundaries are compatible with the direction convictions
-#       stopifnot(any( (targ$lb>=0 & targ$conviction<0) | (targ$ub<=0 & targ$conviction>0) )  == FALSE )
-#     }
-#
-#     ###Define Output Matrices after first run!
-#     if(k==1){
-#       RW <- matrix(nrow = sec_nr,ncol = loop.nr ,
-#                    dimnames=list(rownames(targ),paste("set",SET$setID,sep="")))
-#       optim_details_names <- list(c("Calculated","TEact-TEtarg","%weight_limits_hit","NetInvestment","PortBeta","IndexPosition",
-#                                     "target_function_value","iterations","calctime","total_rb_dev","validResult"))
-#       Optim_Details <- array(dim=c(lengths(optim_details_names),loop.nr),dimnames = optim_details_names)
-#       TARG <- array(dim=c(sec_nr,length(targ_names),length(InputParameters)), #to store the different input tables
-#                     dimnames=list(rownames(targ),targ_names,InputParameters))
-#       TARG[,,set$InputParameters] <- as.matrix(targ[,targ_names])
-#       different_covsettings <- unique(SET[,c("CovCalcWay","CovReturns","Specif_COV")])
-#       COV <- array(dim=c(sec_nr,sec_nr,nrow(different_covsettings)),
-#                    dimnames=list(rownames(targ),rownames(targ),apply(different_covsettings,1,paste,collapse="_")))
-#     }
-#
-#     #reload COV if needed
-#     if(k == 1 ||                                                    #reload for first year
-#        identical(SET$Specif_COV[max(1,k-1)],set$Specif_COV) == FALSE ||   #reload COV if COV changed
-#        identical(SET$CovCalcWay[max(1,k-1)],set$CovCalcWay) == FALSE ||     #reload COV if COV changed
-#        identical(SET$CovReturns[max(1,k-1)],set$CovReturns) == FALSE)   #reload COV if COV changed
-#
-#     {if(is.na(set$Specif_COV)){
-#       CovID <- FAFunc.FindNewestCovInDB(RelOrAbsReturn=as.character(set$CovReturns),Portfolioname=Portfolio)
-#
-#     }else  {CovID <- set$Specif_COV}
-#       print(paste("For the loop",k,"the COV with RunID",CovID,"is used"))
-#       SET$CovID[k] <- CovID
-#
-#       #Get covariance matrix
-#       cov <- f.getCovFromSQL(RunID = CovID,CalculationMethod = set$CovCalcWay,WideOrLong = "wide")
-#       cov <- f.matchCOVtoTickers (Tickers = rownames(targ), COV = as.data.frame(cov))
-#       COV[,,paste(set$CovCalcWay,set$CovReturns,set$Specif_COV,sep="_")] <- as.matrix(cov)
-#
-#     }
-#
-#
-#     ####optimization####  ->new runRCO-function: runRCO <- function(targ,COV,RCOset,save)
-#     #reduce to active portfolio and seperate TickerInfo from its covariances (necessary as target function cant handle 0-weights as it calculates ......*log(w)*....)
-#     sec_a <- targ$conviction != 0
-#     targ_a <- targ[sec_a,]
-#     cov_a <- f.matchCOVtoTickers (Tickers = rownames(targ_a), COV = cov)
-#
-#     RCOthisLoop <- f.runRCO(targ_a,set,cov_a)
-#
-#     #store the results in Loop-Matrices if valid
-#     Optim_Details[,k] <- RCOthisLoop$optim_details
-#     if(RCOthisLoop$optim_details["validResult"])
-#     {RW[sec_a,k] <- RCOthisLoop$rw
-#     RW[!sec_a,k] <- 0
-#     }
-#     #intermediary save output file to not loose everything if a later loop gets interrupted
-#     dat <- list(SET=SET,Optim_Details=Optim_Details,RW=RW,TARG=TARG,COV=COV, reduce=FALSE)
-#     save(dat,file=paste(file_path_out,Sys.Date()," RCOres.R",sep=""))
-#   }
-#   print(paste("all", k ,"loops completed. Storing of results in process"))
-#
-#   ######OUTPUT RESULTS######################
-#   RCOres <- list(SET=SET,Optim_Details=Optim_Details,RW=RW,TARG=TARG,COV=COV)
-#   f.writeOptdetails2xlsx(RCOres,Portfolio,Sys.Date(),SET$ShortIndexWithOptimCash[1])
-#   return(RCOres)
-# }
-#
 
-#
+# delete infeasible settings
+f.delete_infeasible_settings <- function(all_possible_settings_df){
 
-#
-# #########Funktion um die Outputs der verschiedenen Loops zu plotten####
-# f.compare_runs<-function(xaxis,yaxis,plotlabels=NA,RCOres)#x: from rownames(SET),y from rownames(optim_details),labels row of SET
-# {
-#   #get input and result table from RCOresult-list
-#   SET<-t(RCOres$SET)
-#   optim_details <- RCOres$Optim_Details
-#   n<-ncol(SET)
-#
-#   #make check for inputs
-#   #if(any(xaxis==rownames(SET))==FALSE) paste("xaxis must be one of the following characters",rownames(SET))
-#   stopifnot(any(yaxis==row.names(optim_details)),(is.na(plotlabels) |any( plotlabels==rownames(SET))))
-#
-#   #okTEdev<-(abs(optim_details["TEact-TEtarg",])<0.001)*1:8
-#   #plot(SET[xaxis ,],optim_details[yaxis,],xlab=xaxis,ylab=yaxis,col=1:n,pch=1:n,cex=3,bg=okTEdev,main = paste("'",xaxis,"'"," vs. ","'",yaxis,"'"))
-#   plot(SET[xaxis ,],optim_details[yaxis,],xlab=xaxis,ylab=yaxis,col=1:n,pch=1:n,cex=3,main = paste("'",xaxis,"'"," vs. ","'",yaxis,"'"))
-#   if(is.na(plotlabels)==FALSE)  legend("topleft",legend=paste(plotlabels,":",SET[plotlabels,]),col= 1:n,pch=1:n,box.lwd = 0,bty="n")
-#
-#   #3D
-#   #library(rgl)
-#   ##library(lubridate)
-#   #?rgl
-#   # zaxis<-SET["Trials",]
-#   # df <- expand.grid(x=xaxis,y=yaxis,z=zaxis)
-#   # open3d()
-#   # plot3d(df$x, df$y, df$z,type="s",type='p')
-#   #deviation distribution
-#
-#   #example (needs an existing result in RCOres-form)
-#   #xaxis <- "TargetTE";yaxis <- "PortBeta";plotlabels <- NA; RCOres <- RCOres
-#   #f.compare_runs( xaxis,yaxis,plotlabels=NA,RCOres)
-# }
-#
-# #########Funktion um die optimierten Gewichte der verschiedenen Loops zu plotten
-# f.compare_runWeights <- function(RCOres,colby=NA,showRCB=FALSE,whichCOV=1)
-# {
-#
-#   w <- RCOres$RW
-#
-#
-#   if(is.na(colby))
-#   {
-#     col <- 1:nrow(w)
-#     leg <- paste("set",col,sep="")
-#   }else
-#   {
-#     settypes <- as.factor(RCOres$SET[,colby])
-#     col <- as.numeric(settypes)
-#     leg <- levels(settypes)
-#   }
-#
-#   if(showRCB)
-#   {
-#     print("ATTENTION: First Covariance taken for all runs even if several different Covariances have been used for the optimizations!!!!")
-#     cov <- as.data.frame(RCOres$COV[,,whichCOV])
-#     cov <- f.matchCOVtoTickers(colnames(w),cov)
-#     rcb <- t(apply(w,1,get_rcb,cov))
-#
-#     #add shorter names
-#     colnames(w) <- as.character(.pT(colnames(w)))
-#     colnames(rcb) <- colnames(w)
-#     bp <- barplot(rcb,beside=TRUE,las=2,col=col,main="optimized risk contributions for different settings")
-#   }else
-#   {
-#     #add shorter names
-#     colnames(w) <- as.character(.pT(colnames(w)))
-#     bp <- barplot(w,beside=TRUE,las=2,col=col,main="optimized weights for different settings")
-#   }
-#   legend("topright",legend=leg,fill=1:length(leg),title=ifelse(is.na(colby),"",colby))
-#
-#   #example (needs an existing result in RCOres-form)
-#   #RCOres <- RCOres;colby=NA;showRCB=FALSE;whichCOV=1
-#   #f.compare_runWeights(RCOres,colby=NA,showRCB=FALSE,whichCOV=1)
-# }
-#
-#
-# #####Create 4-plots to evaluate a single setting-run
-# checkRCOplots<-function(rw,cov,Conviction,lb,ub,rb,set,Tick,tv,ShortIndexWithOptimCash=0){
-#
-#   #par(mfrow=c(2,2),oma = c(0, 0,4, 0))
-#   ipak("sfsmisc")
-#   sfsmisc::mult.fig(4,oma = c(0, 0,4, 0))  #change to mult.fig!
-#
-#   if(any(is.na(rw))){print("no plots possible, NAs within the result")
-#
-#     plot(1,1,main = "NA");plot(1,1,main ="NA");plot(1,1,main ="NA");plot(1,1,main ="NA")
-#     mtext(paste("Calculated with the settings: ",set$setID,sep=""), outer=TRUE,line=2.5,cex=1.5)
-#     ix.fl <- 1:floor(length(set)/2) #columns of settings to plot in the first line below title
-#     mtext(paste(names(set[ix.fl]),set[ix.fl],sep="=",collapse="; "), outer = TRUE,line=1, cex = 1)
-#     mtext(paste(names(set[-ix.fl]),set[-ix.fl],sep="=",collapse="; "), outer = TRUE,line=0, cex = 1)
-#   }else{
-#     #get characteristics from function!!!
-#     orc <- OptimizationResultsCharacteristics(rw=rw,cov=cov,lb=lb,ub=ub,set=set,rb_target=rb)
-#
-#     if(ShortIndexWithOptimCash==1)  rw <- orc$rw_impl
-#     #rw=rw;COV=COV;lb=lb;ub=ub;set=set
-#
-#     te.targ <- set$TargetTE
-#     te <- orc$te
-#     rc <- orc$rc
-#     NetInvestment <- as.numeric(orc$NetInvestment)
-#     IndexPosition <- as.numeric(orc$IndexPosition)
-#     P.Beta <- orc$p.beta
-#
-#     #adjust lower bounds to reflect implementable lbs!
-#     lb[-1] <- (1+rw[1])*lb[-1]
-#
-#
-#     #reduce to active securities again for plotting
-#     .r<-function(x){return(x[Conviction !=0])}
-#     lb_a <- .r(lb);ub_a <- .r(ub);rw_a<-.r(rw);rb_a<-.r(rb);rc_a<-.r(rc);Tick_a<-.r(Tick);Conviction_a <- .r(Conviction)
-#     const_hit1 <- round(lb_a,3) == round(rw_a,3)
-#     const_hit2 <- round(ub_a,3) == round(rw_a,3)
-#     all <- c(rb_a,rc_a)
-#     range <- c(min(all),max(all))
-#     plot(rb_a,rc_a,col=sign(.r(Conviction))+3,xlim=range,ylim=range,xlab="risk budget",ylab="risk contribution",cex=abs(rw_a)/mean(abs(rw_a)),main="risk budget use (size prop to weight)")
-#     abline(a=0,b=1,lty=3,lwd=0.25)
-#     #active share
-#     active_share<-0.5*sum(abs(rw_a))
-#     legend("topleft",c("long","short"),col= c(4,2),pch=1,bty="n",cex=1)
-#
-#     #names vs weights and risk_contribution
-#     const_hit <- const_hit1 + const_hit2
-#     txtsize <- ifelse(length(rc_a)>40,0.8,1)
-#     x <- barplot(rc_a,ylim=range,beside=TRUE,names.arg=.pT(Tick_a),las=2,cex.names =txtsize,main="risk contr")
-#     text(x,0.0025+rc_a,labels=round(Conviction_a,0),cex=txtsize)
-#     sumLong <- paste("LongConvictions:",round(sum(Conviction[Conviction>0]),1))
-#     sumShort <- paste("ShortConvictions:",round(sum(Conviction[Conviction<0]),1))
-#     ixConviction <- paste("IndexConviction:",round(Conviction[1],1))
-#     legend("topleft",c("Conviction",sumLong,sumShort,ixConviction),text.font=c(1,2,2,2),box.lty=0,bg="transparent")
-#     fig3main <- paste("active weights (",paste("active share: ",100*round(active_share,2),"%)"))
-#     bp.rw <- barplot(rw_a,beside=TRUE,names.arg=.pT(Tick_a),las=2,cex.names=txtsize,main=fig3main,col=1+const_hit)
-#     points(x=bp.rw,y=lb_a,pch=3)
-#     legend("bottomright",c("","restricted"),col= c(1,2),pch=7,bty="n",cex=1)
-#
-#     #side constraints
-#     sc <- c(IndexPosition = as.numeric(rw[1]),NetInv=sum(rw),
-#             NetInvTol=ifelse(sum(rw)<0,-set$CashTolerance,set$LeverageTolerance),
-#             TE_act = te, 'TEact-TEtarg' = te - te.targ,beta=P.Beta)
-#     x <- barplot(sc,main=paste("The value of the objective function is",round(tv,3)),las=1)
-#     text(x,sc-0.0025*sign(sc),labels=round(sc,3))
-#
-#     #overall title
-#     set$algo <- as.character(set$algo)
-#     set$CovCalcWay <- as.character(set$CovCalcWay)
-#     set$CovReturns <- as.character(set$CovReturns)
-#     set$InputParameters <- as.character(set$InputParameters)
-#     mtext(paste("Calculated with the settings: ",set$setID,sep=""), outer=TRUE,line=2.5,cex=1.5)
-#     ix.fl<-1:floor(length(set)/2) #columns of settings to plot in the first line below title
-#     mtext(paste(names(set[ix.fl]),set[ix.fl],sep="=",collapse="; "), outer = TRUE,line=1, cex = 1)
-#     mtext(paste(names(set[-ix.fl]),set[-ix.fl],sep="=",collapse="; "), outer = TRUE,line=0, cex = 1)
-#   }
-#
-#   #example (needs an existing result in RCOres-form)
-#   #rw <- RCOres$RW[,1] ; Tick <- names(rw); cov <- RCOres$COV[,,1]; lb <- RCOres$TARG[,"lb",1]; ub <- RCOres$TARG[,"ub",1]; Conviction <- RCOres$TARG[,"conviction",1];rb <- RCOres$TARG[,"RiskBudget",1]
-#   #set <- RCOres$SET[1,,drop=FALSE] ; tv <- as.numeric(RCOres$Optim_Details["target_function_value",1])
-#   #checkRCOplots(rw,cov,Conviction,lb,ub,rb,set,Tick,tv,ShortIndexWithOptimCash=0)
-#
-# }
-#
-# ###wrapper to plot call checkRCOplots from optimization output
-# plotSingleSetIDfromRCOres<-function(setid,RCOres,covstr="used for opt") #covstr specifying which covariance to use for the calculation
-# {
-#   #get info from RCOres (output of the RCO function)
-#   set <- RCOres$SET[RCOres$SET$setID==setid,]
-#   rw <- RCOres$RW[,setid]
-#   targv <- as.numeric(RCOres$Optim_Details["target_function_value",setid])
-#
-#   if(covstr=="used for opt")
-#   { cov <- RCOres$COV[,,paste(set[c("CovCalcWay","CovReturns","Specif_COV")],collapse="_")]} else{
-#     cov <- RCOres$COV[,,covstr]
-#   }
-#   cov <- f.matchCOVtoTickers(names(rw),as.data.frame(cov))
-#
-#
-#
-#   TickInputs <- as.data.frame(RCOres$TARG[,,set$InputParameters])
-#
-#   #recaclulate the effectively set boundaries
-#   w_range <- f.getWeightRange(
-#     TickInputs$lb,
-#     TickInputs$ub,
-#     TickInputs$conviction,
-#     TickInputs$tradeability,
-#     set$MaxRelWeight,
-#     set$LowConvictionExitInDays,
-#     set$ConvictionGroups
-#   )
-#   #call plot function
-#   checkRCOplots(rw=rw,cov=cov,Conviction=TickInputs[,3],lb=w_range$w_min,ub=w_range$w_max,
-#                 rb=TickInputs[,4],set=set,Tick=rownames(TickInputs),tv=targv)
-#
-#
-#   #example (needs an existing result in RCOres-form)
-#   # setid <- 1; RCOres <- RCOres;covstr <- "used for opt"
-#   #plotSingleSetIDfromRCOres(setid,RCOres,covstr="used for opt")
-#
-# }
-#
+  if(class(all_possible_settings_df) == "data.frame"){
 
-#
-# ###compare RCOres in ggplot
-# compareRCOruns <- function(RCOres,xaxis,yaxis,colby,pointat,Jitter=0.5,whichCov="used for opt")
-# {
-#   #parameters:
-#   #pointat: which point should be bigger than the others,
-#   #whichCov: if specified calculate all the optimization results characteristics with one COV (ie same COV-settings)
-#   #whichCov <- "nlshrink_abs_NA"
-#
-#   if(whichCov == "used for opt")
-#   {
-#     OPTRES <- cbind(t(RCOres$Optim_Details),RCOres$SET)
-#   }else
-#   {
-#
-#     SET <- RCOres$SET
-#
-#     RW <- RCOres$RW
-#     cov <- as.data.frame(RCOres$COV[,,whichCov])
-#     cov <- f.matchCOVtoTickers(rownames(RW),cov)
-#     OPTRES <- RCOres$Optim_Details; OPTRES[,] <- NA #output table
-#     for(i in 1:nrow(SET))
-#     {
-#       set <- SET[i,]
-#       targ <- RCOres$TARG[,,set$InputParameters]
-#       rw <- RW[,i]
-#       orc <- OptimizationResultsCharacteristics(rw=rw,cov=cov,lb=targ[,"lb"],ub=targ[,"ub"],set=set,rb_target=targ[,"RiskBudget"]) #rw=rw;COV=COV;lb=targ$lb.;ub=targ$ub;set=set
-#       #store results in OPTRES
-#       OPTRES[,i] <- c(Calculated=RCOres$Optim_Details["Calculated",i],
-#                       orc$te-set$TargetTE,
-#                       orc$const_hit_pct,
-#                       orc$NetInvestment,
-#                       orc$p.beta,orc$IndexPosition,
-#                       RCOres$Optim_Details["target_function_value",i],
-#                       RCOres$Optim_Details["iterations",i],
-#                       RCOres$Optim_Details["calctime",i],
-#                       orc$total_rb_dev,
-#                       RCOres$Optim_Details["validResult",i]
-#       )
-#     }
-#     OPTRES <- cbind(t(OPTRES),RCOres$SET)
-#   }
-#
-#   OPTRES$DiffSet <- rep("",nrow(OPTRES))
-#   for(i in colby)
-#   {
-#     OPTRES$DiffSet <- paste(OPTRES$DiffSet,as.factor(paste("_",substr(i,1,3),":",OPTRES[,i],";",sep="")),"")
-#   }
-#
-#   library(ggplot2)
-#   sz <- rep(3,nrow(OPTRES));sz[pointat]=10;
-#   OPTRES[,yaxis] <- f.as.numeric.factor(OPTRES[,yaxis])
-#   ggplot(OPTRES,aes(y = get(yaxis), x = jitter(get(xaxis),factor=Jitter), color = DiffSet,group = DiffSet,fill= DiffSet)) +
-#     geom_line(size = 0.5) + geom_point(size = sz, shape=pmin(sz+18,23)) +
-#     theme(legend.position="right",legend.direction="vertical") +
-#     labs(x=xaxis,y=yaxis)
-#
-#   #example given RCOres
-#   #compareRCOruns(RCOres,yaxis="total_rb_dev",xaxis="TargetTE",colby="setID",pointat=1,Jitter=0,whichCov="nlshrink_abs_NA")
-#
-# }
-#
-# #####further help functions#############
-# #delete infeasible settings
-# f.delete_infeasible_settings <- function(SET){
-#   # Sort data frame with settings
-#   SET <- SET[with(SET,order(InputParameters,Specif_COV)),]
-#
-#   # remove infeasible combinations
-#   # soft leverage constrained: depends on Cash- and LeverageTolerance, needed in Settings to filter out algos that do not work!
-#   # Soft leverage constrained does not work with Lagrangian optimizer (as Lagrangian uses an equality constraint!)
-#   SET$SoftNetInvConstraint <- ifelse(SET$LeverageTolerance != 0 | SET$CashTolerance != 0, TRUE, FALSE)
-#
-#   algo_lagrange <- c("NLOPT_GD_AUGLAG_EQ", "NLOPT_LN_AUGLAG_EQ", "NLOPT_LD_AUGLAG_EQ")
-#   algo_gradient <- c("NLOPT_GD_AUGLAG_EQ","NLOPT_LD_AUGLAG_EQ","NLOPT_LD_SLSQP")
-#
-#   if (any(SET$algo %in% algo_lagrange & SET$SoftNetInvConstraint)){
-#     # it means that there is at least one infeasible combination
-#     # delete such rows from data frame
-#     ind_to_delete <- which(SET$algo %in% algo_lagrange & SET$SoftNetInvConstraint)
-#
-#     SET <- SET[-ind_to_delete, ]
-#     n_del <- length(ind_to_delete)
-#
-#     print(paste( "Lagrangian Optimization does not work with Soft Leverage Constraint: removed",
-#                  n_del,
-#                  "settings"))
-#   }
-#
-#   # Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo
-#   if(any((SET$algo %in% algo_gradient |
-#           SET$SoftNetInvConstraint |
-#           SET$IndexFlex) & SET$Ix_eq_Cash)) {
-#
-#     ind_to_delete <- which((SET$algo %in% algo_gradient |
-#                               SET$SoftNetInvConstraint |
-#                               SET$IndexFlex) & SET$Ix_eq_Cash)
-#
-#     SET <- SET[-ind_to_delete, ]
-#     n_del <- length(ind_to_delete)
-#
-#     message(paste("Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo : removed", n_del, "settings"))
-#   }
-#
-#   # NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint
-#   # TODO check the condition
-#   stopifnot(all(SET$NetInvLambda >= 0)) # the lambda must not be < 0
-#   if (any(SET$NetInvLambda > 0 & SET$SoftNetInvConstraint == FALSE))
-#   {
-#     ind_to_delete <- which((SET$NetInvLambda > 0 & SET$SoftNetInvConstraint == FALSE))
-#     SET <- SET[-ind_to_delete, ]
-#     n_del <- length(ind_to_delete)
-#
-#     message(paste("NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint. removed", n_del, "settings"))
-#   }
-#
-#   return(SET)
-# }
-#
-#
+    # Sort data frame with settings
+    required_col_names <- c("InputParameters", "Specif_COV", "LeverageTolerance",
+                            "CashTolerance", "algo", "IndexFlex", "Ix_eq_Cash")
+
+    if(all(required_col_names %in% colnames(all_possible_settings_df))){
+
+      rows_sorted_ind <- with(all_possible_settings_df, order(InputParameters, Specif_COV))
+      all_possible_settings_df <- all_possible_settings_df[rows_sorted_ind, ]
+
+      # soft leverage constrained: depends on Cash- and LeverageTolerance, needed in Settings to filter out algos that do not work!
+      all_possible_settings_df$SoftNetInvConstraint <- ifelse(all_possible_settings_df$LeverageTolerance != 0 |
+                                                              all_possible_settings_df$CashTolerance != 0,
+                                                              TRUE, FALSE)
+
+      # Available algorithms
+      algo_lagrange <- c("NLOPT_GD_AUGLAG_EQ", "NLOPT_LN_AUGLAG_EQ", "NLOPT_LD_AUGLAG_EQ")
+      algo_gradient <- c("NLOPT_GD_AUGLAG_EQ","NLOPT_LD_AUGLAG_EQ","NLOPT_LD_SLSQP")
+
+      # Soft leverage constrained does not work with Lagrangian optimizer (as Lagrangian uses an equality constraint!)
+      # find infeasible combinations
+      ind_to_delete <- which(all_possible_settings_df$algo %in% algo_lagrange &
+                             all_possible_settings_df$SoftNetInvConstraint == TRUE)
+
+      if (length(ind_to_delete) > 0){
+        # it means that there is at least one infeasible combination
+        # delete such rows from data frame
+
+        all_possible_settings_df <- all_possible_settings_df[-ind_to_delete, ]
+        n_del <- length(ind_to_delete)
+
+        print(paste( "Lagrangian Optimization does not work with Soft Leverage Constraint: removed",
+                     n_del,
+                     "settings"))
+      }else{
+        # Nothing. This condition is satisfied
+      }
+
+      # Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo
+      ind_to_delete <- which((all_possible_settings_df$algo %in% algo_gradient |
+                              all_possible_settings_df$SoftNetInvConstraint |
+                              all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
+
+      if (length(ind_to_delete) > 0){
+
+        all_possible_settings_df <- all_possible_settings_df[-ind_to_delete, ]
+        n_del <- length(ind_to_delete)
+
+        message(paste("Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo : removed", n_del, "settings"))
+      }else{
+        # Nothing. This condition is satisfied
+      }
+
+      # the lambda must not be < 0.
+      stopifnot(all(all_possible_settings_df$NetInvLambda >= 0))
+
+      # NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint == TRUE
+      ind_to_delete <- which((all_possible_settings_df$NetInvLambda > 0 &
+                              all_possible_settings_df$SoftNetInvConstraint == FALSE))
+
+      if (length(ind_to_delete) > 0){
+
+        all_possible_settings_df <- all_possible_settings_df[-ind_to_delete, ]
+        n_del <- length(ind_to_delete)
+
+        message(paste("NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint. removed", n_del, "settings"))
+
+      }else{
+        # Nothing. This condition is satisfied
+      }
+
+      return(all_possible_settings_df)
+
+    }else{
+      stop("f.delete_infeasible_settings: input data.frame does not have requested columns")
+    }
+  }else{
+    stop("f.delete_infeasible_settings: input must be a data.frame")
+  }
+}
+
+# FindCovarianceMatrix in DB which is default for a selected portfolio
+get_default_CovMaID <- function(Portfolioname){
+  # input parameters validations
+  stopifnot(class(Portfolioname) == "character")
+
+  def_cov_id_query <- paste0("select max(CovMatrixRunID) as defCovMaID
+                            from betsizing.CalculationDefaultSettings
+                            where CustomPortfolioName = '", Portfolioname, "'")
+
+  # Execute Query and return the default COVID
+  con <- FAFunc.GetDB()
+
+  def_RunID_df <- RODBC::sqlQuery(con, def_cov_id_query)
+
+  if(class(def_RunID_df) == "data.frame"){
+    if(nrow(def_RunID_df) > 0){
+      # defCovMaID is guaranteed by the query
+      cov_id <- as.numeric(def_RunID_df$defCovMaID)
+      return(cov_id)
+    }else{
+      stop("get_default_CovMaID: No Covariance matrix as specified ",
+           "was calculated yet for the given portfolio")
+    }
+  }else{
+    stop("get_default_CovMaID: query failed ")
+  }
+}
+
+# Output optdetails to xlsx
+f.writeOptdetails2xlsx <- function(RCOres_l,
+                                   Portfolio,
+                                   Calcdate="",
+                                   ShortIndexWithOptimCash=0,
+                                   ZeroNetInvestment = FALSE,
+                                   OnlyID_v = NULL){
+
+  stopifnot(class(RCOres_l) == "list")
+  names_RCOres_v <- c("settings_df", "details_ma", "rw_ma", "targ_3D_array", "cov_3D_array")
+  stopifnot(all(names(RCOres_l) %in% names_RCOres_v))
+  stopifnot(class(RCOres_l$settings_df) == "data.frame")
+  stopifnot(class(RCOres_l$details_ma) == "matrix")
+  stopifnot(class(RCOres_l$rw_ma) == "matrix")
+  stopifnot(class(RCOres_l$targ_3D_array) == "array")
+  stopifnot(class(RCOres_l$cov_3D_array) == "array")
+  stopifnot(class(OnlyID_v) == "numeric")
+  stopifnot("setID" %in% colnames(settings_df))
+
+  settings_df <- RCOres_l$settings_df
+  optres_ma <- rbind(RCOres_l$details_ma, RCOres_l$rw_ma)
+  targ_3D_array <- RCOres_l$targ_3D_array
+
+  if(is.null(OnlyID_v) == FALSE)
+  {
+    # Some particular settings are required
+    existing_set_ind <- which(OnlyID_v %in% settings_df$setID)
+
+    if(length(existing_set_ind) > 0){
+
+      if(length(existing_set_ind) != length(OnlyID_v)){
+        warning("f.writeOptdetails2xlsx: some requested IDs do not exist")
+        OnlyID_v <- OnlyID_v[existing_set_ind]
+      }else{
+        # Nothing. Take all
+      }
+
+      print(paste("output only id", OnlyID_v))
+      # Take only required rows of settings and all columns
+      settings_df <- settings_df[settings_df$setID == OnlyID_v, , drop = FALSE]
+      # Take only required optimization results
+      optres_ma <- optres_ma[, colnames(optres_ma) == paste("set", OnlyID_v, sep = ""), drop = FALSE]
+
+    }else{
+      stop("f.writeOptdetails2xlsx: Requested IDs do not exist")
+    }
+  }
+
+  t_settings_df <- t(settings_df)
+  rownames(t_settings_df) <- paste("set",colnames(settings_df))
+  colnames(t_settings_df) <- colnames(optres_ma)
+
+  sec_nr <- length(targ_3D_array[,1,1])
+
+  # implement Index Position in output if desired so
+  if(ShortIndexWithOptimCash == 1)
+  {
+    l <- nrow(optres_ma)
+    ix_sec <- (l - sec_nr + 1):l
+    w_bm <- -targ_3D_array[-1, "lb", 1]
+    for (i in 1:ncol(optres_ma))
+    {
+      optres_ma[ix_sec,i] <- ImplIndexPosition(as.numeric(optres_ma[ix_sec,i]),w_bm,ZeroNetInvestment)
+    }
+  }
+
+  pr.optres_ma <- rbind(as.matrix(t_settings_df), as.matrix(optres_ma))
+
+  rownames(pr.optres_ma) <- c(rownames(pr.optres_ma)[1:(nrow(pr.optres_ma)-sec_nr)],names(targ_3D_array[,1,1]))
+
+  file_path_out <- paste("G:/FAP/Equities/Betsizing/R_results/",Portfolio,"/",sep="",collapse="")
+
+  file_path_name <- paste(file_path_out,Portfolio,"_",Calcdate,"_optdetails.xlsx",sep="",collapse="")
+
+  xlsx::write.xlsx(x = pr.optres_ma,
+                   file = file_path_name,
+                   sheetName="R.output")
+
+  #example
+  #RCOres <- RCOres; Portfolio <- "RE_EU";Calcdate="";ShortIndexWithOptimCash=0;ZeroNetInvestment=FALSE;OnlyID=FALSE
+  #f.writeOptdetails2xlsx(RCOres,Portfolio,Calcdate,ShortIndexWithOptimCash,ZeroNetInvestment,OnlyID)
+}
 
 
-#
-# #short tickers for printing in plots
-# .pT <- function(x,start=0,stop=4){sapply(x,substr,start,stop)}
-#
-
-#
-# ######READ AND WRITE FILES/RESULTS#################
-#
 
 
-#
+runRCOLoops <- function(Portfolio,                 #character string of the portfolio. used to identify the targ-file to load
+                        TargetTE,                            #Target Tracking error as numeric or numeric vector (to vary through settings)
+                        MaxRelWeight = 0.1,                 #Maximum relative Weigth (under- or over-)
+                        Trials = 10000,                      #Limit of Trials for the optimizer. as numeric or nusec_nrmeric vector (to vary through settings)
+                        algo = "NLOPT_LD_SLSQP",         #algo that nloptr uses as character or character vector  (to vary through settings):  "NLOPT_GN_ISRES" non gradient; "NLOPT_LD_SLSQP" with Gradient, FAILED: "NLOPT_GD_STOGO","NLOPT_GD_STOGO_RAND"
+                        CashTolerance = 0.0025,              #Boundary for the Cash held (conditon is: -sum(w)>CashTolerance)
+                        LeverageTolerance = 0.0025,          #Boundary for the Leverage held (condition is sum(w)<LeverageTolearnce)
+                        CovCalcWay="nlshrink",               #Covariance calculation setting for SQL-Covariance. #c("nlshrink","cov")
+                        CovReturns="abs",                    #Covarniance calculation setting for SQL-Covariance. #c("abs","rel")
+                        ShortIndexWithOptimCash=0,           #set 0 or 1 to implement the optimized Cash position by shorting the ind   ex via selling proportional weights in each index-member
+                        InputParameters="Signals4R",         #character string like fitting the variable input in the specified targ-sheet
+                        Specif_COV=NA,                        #set specific covariance ID, -10 for testing and NA for most recent available for the chosen portfolio
+                        xtol_rel=10^-7,
+                        IndexFlex=FALSE,
+                        Ix_eq_Cash =FALSE,
+                        NetInvLambda = 0                        #punishment factor for NetInvestments <>0
+                        #,FixedCashRisk = 0                     #fixed cash risk in the portfolio that needs to be taken into account!
+                        ,LowConvictionExitInDays = 10
+                        ,ConvictionGroups = 3
 
-#
-#
-# f.writeRCOsettingsToSQL <- function(set,verbose=FALSE)
-# {
-#   ipak("RODBC")
-#   con <- FAFunc.GetDB()
-#
-#   #insert whole settingsSET in tempTable (to check in sql if settings are new!)
-#   #delete existing table
-#   temptable <- "betsizing.CalculationRCOCurrentSettingSetUnsaved"
-#   dummydf <- data.frame(ParameterValue="dummyv")
-#   rownames(dummydf) <- "TargetTE"
-#   sqlSave(con, dummydf,temptable,append=TRUE , rownames="FK_ParameterName")
-#   selstr = paste("Delete FROM " , temptable,sep="")
-#   sqlQuery(con, selstr)
-#   if(verbose) print(paste("cleared temporary GlobalSettings table:",temptable))
-#   #fill in chosen settings
-#   df.set <- data.frame(FK_ParameterName=colnames(set),ParameterValue = set)
-#   rownames(df.set) <- c()
-#   df.s <- data.frame(t(set))
-#   colnames(df.s) <- "ParameterValue"
-#   df.s  <- df.s[!(row.names(df.s) %in% c("LbMax","InputParameters","Specif_COV","setID","SoftLeverageConstrained","CovCalcWay","CovReturns","CovID")),,drop=FALSE]
-#   saved <- sqlSave(channel=con, dat = df.s, tablename=temptable, append=TRUE , rownames="FK_ParameterName")
-#   if(verbose & saved==1) print("successfully inserted the used GlobalSettings in SQL-Temporary-Table")
-#   stopifnot(saved==1)
-#   #exec sql procedure to give back correspondent GlobalSettingSetID (and create a new one if required)
-#   execstr <- "exec betsizing.uspCalculationRCO_LookupOrAddNewSettingSet"
-#   QueryResult <-  sqlQuery(con, execstr)
-#   stopifnot(is.na(QueryResult)==FALSE)
-#   if(verbose) print(paste("successfully inserted new OR linked used Global settings with existing GLobalSettingSetID: ",QueryResult))
-#
-#   return(QueryResult)
-#   #example (needs an existing result in RCOres-form)
-#   #set <- RCOres$SET[1,];verbose=TRUE
-#   #(r <- f.writeRCOsettingsToSQL(set,verbose=FALSE))
-#
-# }
-#
-#
-#
-#
-# #########Output optdetails to xlsx
-# f.writeOptdetails2xlsx <- function(RCOres,Portfolio,Calcdate="",ShortIndexWithOptimCash=0,ZeroNetInvestment=FALSE,OnlyID=FALSE)
-# {
-#   ipak("xlsx")
-#   SET <- RCOres$SET
-#   OPTRES <- rbind(RCOres$Optim_Details, RCOres$RW)
-#   TARG <- RCOres$TARG
-#
-#
-#   if(is.numeric(OnlyID))
-#   {
-#     stopifnot(any(OnlyID %in% SET$setID))
-#     print(paste("output only id",OnlyID))
-#     SET <- SET[SET$setID==OnlyID,,drop=FALSE]
-#     OPTRES <- OPTRES[,colnames(OPTRES)==paste("set",OnlyID,sep=""),drop=FALSE]
-#   }
-#
-#   trSET<-t(SET)
-#   rownames(trSET) <- paste("set",colnames(SET))
-#   colnames(trSET) <- colnames(OPTRES)
-#   sec_nr <- length(TARG[,1,1])
-#
-#   if(ShortIndexWithOptimCash == 1) #implement Index Position in output if desired so
-#   {
-#     l <- nrow(OPTRES)
-#     ix_sec <- (l-sec_nr+1):l
-#     w_bm <- -TARG[-1,"lb",1]
-#     for (i in 1:ncol(OPTRES))
-#     {
-#       OPTRES[ix_sec,i] <- ImplIndexPosition(as.numeric(OPTRES[ix_sec,i]),w_bm,ZeroNetInvestment)
-#     }
-#   }
-#   pr.OPTRES<-rbind(as.matrix(trSET),as.matrix(OPTRES))
-#   rownames(pr.OPTRES)<-c(rownames(pr.OPTRES)[1:(nrow(pr.OPTRES)-sec_nr)],names(TARG[,1,1]))
-#
-#   file_path_out <- paste("G:/FAP/Equities/Betsizing/R_results/",Portfolio,"/",sep="",collapse="")
-#   write.xlsx(pr.OPTRES,paste(file_path_out,Portfolio,"_",Calcdate,"_optdetails.xlsx",sep="",collapse=""),sheetName="R.output")
-#
-#   #example
-#   #RCOres <- RCOres; Portfolio <- "RE_EU";Calcdate="";ShortIndexWithOptimCash=0;ZeroNetInvestment=FALSE;OnlyID=FALSE
-#   #f.writeOptdetails2xlsx(RCOres,Portfolio,Calcdate,ShortIndexWithOptimCash,ZeroNetInvestment,OnlyID)
-#
-#
-#
-# }
-#
-#
-#
-#
-#
-#
-#
-#
-#
-# #FAFunc
-#
-#
-# #####ipak function: install and load multiple R packages.####
-# # check to see if packages are installed. Install them if they are not, then load them into the R session.
-# # alternatively require() function can be used
-# ipak <- function(pkg) {
-#   new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
-#   if (length(new.pkg))
-#     install.packages(new.pkg, dependencies = TRUE)
-#
-#
-#   sapply(pkg, require, character.only = TRUE) #require() is equivalent to library()
-# }
-#
-# # usage and load packages... todo: only load those which are really needed
-# #packages <-
-# #  "RODBC" #c("gridExtra", "nloptr", "dplyr", "reshape", "xlsx") #"ggplot2","xlsx", "reshape2",  "microbenchmark","nlshrink","RODBC"
-# #ipak(packages)
-# #options(java.parameters = "-Xmx1024m")
-#
+                        #,convictionInputFrom = c("xls","simts") #new parameter
+){
 
-#
-# ####Connect to db ######
-# FAFunc.GetDB <- function(database = "Aktienmodell") {
-#
-#   ipak("RODBC")
-#
-#   odbcDriverConnect(
-#     connection = paste(
-#       "Driver={SQL Server};server=sqltara;database=",
-#       database,
-#       ";trusted_connection=yes;",
-#       sep = "",
-#       collapse = ""
-#     )
-#   )
-#
-# }
-#
-# ####GET BLOOMBERG-TICKERS-Data######
-# #sfb 2019-03-19: when only one ticker is passed, bb returns a data.frame and not a list. we have to convert it to list
-# FAFunc.GetFromTickers <-   function(output.as = c("p", "r"),
-#                                     Tickers,
-#                                     periodicity = "DAILY",
-#                                     end_date = Sys.Date(),
-#                                     start_date = end_date - 252,
-#                                     missing.values = NA,
-#                                     printout=FALSE)   {
-#   ipak(c("Rblpapi"))
-#
-#   if (class(Tickers) != "character") {
-#     stop("Ticker must be specified as character string")
-#   }
-#   opt <- c("periodicitySelection" = periodicity)
-#
-#   print("connecting to bb...")
-#   blpConnect()
-#   pd <-
-#     bdh(Tickers, "px_last", start_date, end_date, options = opt)
-#
-#   print("output from bb...")
-#   if(printout) print(pd)
-#
-#   #checks
-#   sec.nr <- length(Tickers)
-#
-#   #when only one ticker is queried, bb returns a data.frame and not a list. we convert it to a list to make use of the subsequent code
-#   if (class(pd) == "data.frame") {
-#     pd <- list(pd)
-#     names(pd) <- Tickers[1]
-#   }
-#
-#   #check if input ticker count match returned ticker count
-#   if (sec.nr != length(pd)) {
-#     stop("not all tickers have been loaded")
-#   } else      {
-#     print("ok")
-#   }
-#
-#   datapoints.nr <- rep(0, sec.nr)
-#   #print(sec.nr)
-#   for (i in 1:sec.nr)
-#   {
-#     #assign the number of datapoints loaded for each security
-#     datapoints.nr[i] <- length(pd[[Tickers[i]]][, 2])
-#   }
-#   #print(Tickers)
-#   #print(datapoints.nr)
-#   if (min(datapoints.nr) != max(datapoints.nr))
-#   {
-#     print(
-#       paste(
-#         "not all time series are  of the same lengths. missing values are set to ",
-#         missing.values
-#       )
-#     )
-#   }
-#
-#   d.nr <-
-#     max(datapoints.nr)  #assign the total datapoints (ie the one for the longest series, should be equal to the one of the 1st series)
-#
-#   if (length(data.frame(pd[Tickers[1]])[, 1]) != d.nr) {
-#     stop("the first series' dates are used for all others BUT shorter than at least one other")
-#   }
-#
-#   #create output matrices prices and returns with default values
-#   prices <-
-#     data.frame(matrix(rep(missing.values, (d.nr) * sec.nr), d.nr , sec.nr))
-#   Tickers <- as.character(Tickers)
-#   colnames(prices) <- Tickers
-#   rownames(prices) <- data.frame(pd[Tickers[1]])[, 1]
-#
-#   returns <-
-#     data.frame(matrix(rep(missing.values, (d.nr - 1) * sec.nr), d.nr - 1, sec.nr))
-#   colnames(returns) <- Tickers
-#   rownames(returns) <-
-#     data.frame(pd[Tickers[1]])[2:datapoints.nr[1], 1]
-#
-#
-#   print(sec.nr)
-#   #put prices and calculated returns in the output matrices and set missing values where necessary
-#   for (i in 1:sec.nr)
-#   {
-#     if (d.nr > datapoints.nr[i])
-#     {
-#       lacking <- d.nr - datapoints.nr[i]
-#       prices[(lacking + 1):d.nr, Tickers[i]] <-
-#         data.frame(pd[Tickers[i]])[, 2]
-#       returns[(lacking + 1):(d.nr - 1), Tickers[i]] <-
-#         data.frame(pd[Tickers[i]])[2:(d.nr - lacking), 2] / data.frame(pd[Tickers[i]])[1:(d.nr -
-#                                                                                             lacking - 1), 2] - 1
-#       print(
-#         paste(
-#           Tickers[i],
-#           ": replaced ",
-#           lacking,
-#           "lacking prices with the default value ",
-#           missing.values
-#         )
-#       )
-#
-#       #check if the dates match with those of the first entry as assumed
-#       if (all(data.frame(pd[Tickers[1]])[(lacking + 1):(d.nr), 1] !=  data.frame(pd[Tickers[i]])[, 1]))
-#       {
-#         print(
-#           paste(
-#             "dates dont match for security: ",
-#             Tickers[i],
-#             " consider choosing other tickers or another periodicity. output replaced by NAs to avoid inconsistencies"
-#           )
-#         )
-#         prices[, Tickers[i]] <- rep(NA, d.nr)
-#         returns[, Tickers[i]] <- rep(NA, d.nr - 1)
-#       }
-#     }
-#     if (d.nr == datapoints.nr[i])
-#     {
-#       prices[, Tickers[i]] <- data.frame(pd[Tickers[i]])[, 2]
-#       returns[, Tickers[i]] <-
-#         data.frame(pd[Tickers[i]])[2:d.nr, 2] / data.frame(pd[Tickers[i]])[1:d.nr -
-#                                                                              1, 2] - 1
-#
-#       #check if Tickers without prices (probably wrong set)
-#       if (any(datapoints.nr == 0))
-#       {
-#         stop(
-#           paste(
-#             "The following Tickers dont find ANY prices. Check spelling or delete.:",
-#             Tickers[datapoints.nr == 0]
-#           )
-#         )
-#       }
-#
-#
-#       #check if the dates match with those of the first entry as assumed
-#       if (all(data.frame(pd[Tickers[1]])[, 1] != data.frame(pd[Tickers[i]])[, 1]))
-#       {
-#         print(
-#           paste(
-#             "dates dont match for security: ",
-#             Tickers[i],
-#             " . consider choosing other tickers or another periodicity. output replaced by NAs to avoid inconsistencies"
-#           )
-#         )
-#         prices[, Tickers[i]] <- rep(NA, d.nr)
-#         returns[, Tickers[i]] <- rep(NA, d.nr - 1)
-#       }
-#     }
-#
-#   }
-#
-#
-#   if (output.as == "p") {
-#     return(prices)
-#   }
-#   if (output.as == "r") {
-#     return(returns)
-#   }
-#
-# }
-#
-# ####FindCovarianceMatrix in DB#####
-# #Find the newest Covariance Matrix in the DB that is calculated with the chosen Returns and by the chosen Calculation Method.
-# #optional argument: 'NotNeverThan' set to a date value to get the newest CovarianceMatrix before that date
-#
-# FAFunc.FindNewestCovInDB <-
-#   function(RelOrAbsReturn,
-#            Portfolioname,
-#            NotNeverThan = Sys.Date())
-#   {
-#     ipak("RODBC")
-#     #checks
-#     if (any(RelOrAbsReturn %in% c("abs", "rel")) == FALSE)
-#     {
-#       message(
-#         paste(
-#           "The parameter RelOrAbsReturn is set to '",
-#           RelOrAbsReturn,
-#           "' only 'rel' or 'abs' are allowed",
-#           sep = ""
-#         )
-#       )
-#     }
-#
-#
-#     #Create query according to specification
-#
-#     #create query depending on Cov-return to use
-#     if (RelOrAbsReturn == "abs")
-#     {
-#       t.query.p1 <- paste(
-#         "SELECT max (x.RunID) maxRunID ",
-#         "FROM betsizing.CovarianceMatrixCalculationParams x ",
-#         "left outer join (select * from betsizing.CovarianceMatrixCalculationParams ",
-#         "where ParamName='relativeTo') xcm ",
-#         "on xcm.RunID=x.RunID ",
-#         "left outer join (select * from betsizing.CovarianceMatrixCalculationParams ",
-#         "where ParamName='CalcDT') xdate ",
-#         "on xdate.RunID=x.RunID ",
-#         "where xcm.ParamName is null ",
-#         sep = ""
-#       )
-#     }
-#
-#     else if (RelOrAbsReturn == "rel")
-#     {
-#       t.query.p1 <- paste(
-#         "SELECT max (x.RunID) maxRunID ",
-#         "FROM betsizing.CovarianceMatrixCalculationParams x ",
-#         "left outer join (select * from betsizing.CovarianceMatrixCalculationParams ",
-#         "where ParamName='relativeTo') xcm ",
-#         "on xcm.RunID=x.RunID ",
-#         "left outer join (select * from betsizing.CovarianceMatrixCalculationParams ",
-#         "where ParamName='CalcDT') xdate ",
-#         "on xdate.RunID=x.RunID ",
-#         "where xcm.ParamName is not null ",
-#         sep = ""
-#       )
-#     }
-#
-#
-#     #add to query the selected 'date before' and the selected portfolio
-#     t.query <- paste(
-#       t.query.p1,
-#       "AND x.ParamName = 'porName' AND x.ParamValue = '",
-#       Portfolioname,
-#       "' ",
-#       #"AND xdate.ParamValue  <= ", NotNeverThan,###still needs programming, handle the date values!!!!
-#       sep = ""
-#     )
-#
-#     #Execute Query and return the COVID
-#     con <- FAFunc.GetDB()
-#     maxRunID <- as.numeric(sqlQuery(con, t.query))
-#     if (is.na(maxRunID)) {
-#       stop(
-#         "No Covariance matrix as specified was calculated yet for the given portfolioname and return calc method"
-#       )
-#     }
-#     return(maxRunID)
-#   }
-#
-#
-#
-#
-#
-# ####Get Covariance Matrix for a set of Repnos#####
-#
-# #Find the Covariance Matrix for a set of repnos
-# FAFunc.GetCov4Repnos <- function(Repnos, CovarianceID, CovCalcWay)
-# {
-#
-#   #checks
-#   AllowedCovCalcWays <- c("nlshrink", "cov")
-#   if (any(CovCalcWay %in% AllowedCovCalcWays) == FALSE)
-#   {
-#     message(
-#       paste(
-#         "The parameter CovCalcWay is set to '",
-#         CovCalcWay ,
-#         "' only these values are allowd: ",
-#         sep = ""
-#       )
-#     )
-#     (AllowedCovCalcWays)
-#   }
-#
-#   #get Covariance
-#   #define sql query
-#   ipak("RODBC")
-#   t.query <-
-#     paste(
-#       "SELECT c.Ticker1, c.Ticker2, c.Covariance, v1.RepNo as 'Repno1',v2.RepNo as 'Repno2'",
-#       " FROM betsizing.CovarianceMatrixFlattened  c ",
-#       "inner join Aktienmodell.tickermappings.vRepnosToSCDextended v1 ",
-#       "on c.Ticker1=v1.BloombergTicker or c.Ticker1=v1.BloombergTicker2 ",
-#       "inner join Aktienmodell.tickermappings.vRepnosToSCDextended v2 ",
-#       "on c.Ticker2=v2.BloombergTicker or c.Ticker2=v2.BloombergTicker2 ",
-#       "where c.RunID= ",
-#       CovarianceID,
-#       " and CalculationMethod='",
-#       CovCalcWay,
-#       "'",
-#       sep = ""
-#     )
-#
-#
-#   #get cov from sql
-#   con <- FAFunc.GetDB()
-#   cov.t <- sqlQuery(con, t.query)
-#
-#   #convert id_columns from factors to characters
-#   cov.t$Repno1 <- as.character(cov.t$Repno1)
-#   cov.t$Repno2 <- as.character(cov.t$Repno2)
-#   targ$Repno <- as.character(targ$Repno)
-#
-#
-#   #ensure all the target Repnos  exist in the covariance matrix
-#   for (i in 1:sec_nr)
-#   {
-#     if (any(cov.t$Repno1 == targ$Repno[i]) == FALSE) {
-#       stop(
-#         paste(
-#           "the Ticker ",
-#           targ$Ticker[i],
-#           " is not defined in the corresponding Universe - add to get Covariance",
-#           sep = ""
-#         )
-#       )
-#     }
-#   }
-#
-#
-#   #form covariance matrix as in tickers (by repno to avoid ticker differences due to different exchange codes)
-#
-#   COV <- matrix(rep(0, sec_nr ^ 2), sec_nr)
-#   rownames(COV) <- targ$Ticker
-#   colnames(COV) <- t(targ$Ticker)
-#
-#   for (i in 1:sec_nr)
-#   {
-#     for (j in 1:sec_nr)
-#     {
-#       if (j >= i)
-#       {
-#         #message(paste("i=",i,",j=",j))
-#         COV[i, j] <-
-#           cov.t[cov.t$Repno1 %in% targ$Repno[i] &
-#                   cov.t$Repno2 %in% targ$Repno[j], 3][1]
-#         COV[j, i] <- COV[i, j]
-#       }
-#     }
-#   }
-#
-#   return(COV)
-# }
-#
-#
-# ####add n monthes to a date#####
-# add.month <-
-#   function(date, n) {
-#     seq(date, by = paste(n, "months"), length = 2)[2]
-#   }
-#
-#
-#
-# ####install zip file from any folder########
-# #installFromZip <- function()
-# #{install.packages(file.choose(), repos = NULL, type="source")}
-#
-#
-#
-# ####get libraries from central folder /backup of central folder as zip########
-# #syncLibraries TODO
-# #FAFunc.ZipLibsBackup <- function(ZipPath="G:/FAP/Equities/Betsizing/Code/RLibs/test",saveLocation="G:/FAP/Equities/Betsizing/Code/RLibsBackups/",filename="RLibs")
-# # {
-# #  .libPaths("C:/Rtools/bin")
-# #
-# #   filename <- paste(filename,Sys.Date(),sep="_")
-# #   zipPath <- zip(files=ZipPath,zipfile=paste(saveLocation,filename,sep=""))
-# #}
-# #FAFunc.ZipLibsBackup(saveLocation="C:/Users/scz/AppData/Local/Temp/",filename="test")
-#
-# FAFunc.SyncLibraries <- function(syncToPath = .libPaths()[1], syncFromPath= "G:/FAP/Equities/Betsizing/Code/RLibs")
-# {
-#   #Diese Funktion soll anstatt Packages neu zu installieren, alle lokalen Packages lÃ¶schen
-#   #und vom zentralen Directory auf G alle vorhandenen Packages rÃ¼berzukopieren
-#   #die Lokale Instanz greift danach nur auf die lokalen Packages zu (zusÃ¤tzliche Packages kÃ¶nnen nac1h belieben dann ebenfalls lokal installiert werden)
-#
-#   #Assertions
-#   stopifnot(substr(syncToPath,1,3)== "C:/" )
-#
-#   l <- nchar(syncToPath)
-#   stopifnot(substr(syncToPath,l-5,l) == "/RLibs")
-#
-#   #Sync Libraries
-#   print(paste("All packages in:",syncToPath,"are going to be deleted and replaced by the packages in:",syncFromPath))
-#
-#   oldPaths <- .libPaths()
-#
-#   unlink(syncToPath, recursive = TRUE) #would be nicer to just empty the folder
-#   syncToPath <- substr(syncToPath,1,l-6) #would be nicer to just remove the last folder instead of l-6 (just deleted)
-#   file.copy(file.path(syncFromPath), to = syncToPath, recursive = TRUE)
-#
-#   .libPaths(oldPaths)
-#   print("Libraries were sycnronized")
-#
-# }
+  # Description:
+  # This function executes several loops of optimization
+  # to check how robust is the result
+
+  # Dependencies:
+  # dplyr
+  # reshape
+  # gridExtra
+  # xlsx
+
+  # Functions called:
+  # gridExtra::expand.grid
+  # f.delete_infeasible_settings
+  # FAFunc.GetDB
+  # xlsx::read.xlsx
+  # get_default_CovMaID
+  # f.getCovFromSQL
+  # f.matchCOVtoTickers
+  # f.runRCO
+  # f.writeOptdetails2xlsx
+
+  read_target_settings_from_excel <- function(file_path_in, input_file, ws_name){
+
+    # get risk budget targets, lower bounds for each ticker,
+    targ_col_names_v <- c("Ticker","lb","ub","conviction","RiskBudget","tradeability")
+
+    # Read Excel worksheet to get lb, ub, convictions, tradability...
+    tryCatch({
+      target_settings_df <- xlsx::read.xlsx(file = paste(file_path_in, input_file, sep = "", collapse = ""),
+                                            sheetName = ws_name)
+    },
+    error = function(e){
+      stop(e)
+    })
+
+    if(class(target_settings_df) == "data.frame" &&
+       nrow(target_settings_df) > 0){
+
+      if(all(colnames(target_settings_df) %in% targ_col_names_v)){
+
+        # Check that there are no duplicates
+        if(length(unique(target_settings_df$Ticker)) == nrow(target_settings_df$Ticker)){
+
+          # Weight and convictions must have the same sign.
+          # Weights have lower and upper bounds
+          # stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
+          # How to read: "any() == FALSE" means "There are no"
+          if(any((target_settings_df$lb >= 0 & target_settings_df$conviction < 0) == FALSE) &&
+             any((target_settings_df$ub <= 0 & target_settings_df$conviction > 0) == FALSE)){
+
+            target_settings_df <- target_settings_df[!is.na(target_settings_df$Ticker),]
+            rownames(target_settings_df) <- target_settings_df$Ticker
+            # We don't need tickers
+            required_col_ind <- which(!colnames(target_settings_df) %in% "Ticker")
+            target_settings_df <- target_settings_df[, required_col_ind]
+            # remove possible NA risk budgets
+            required_row_ind <- which(is.na(target_settings_df[, "RiskBudget"]) == FALSE)
+            target_settings_df <- target_settings_df[required_row_ind, ]
+
+            return(target_settings_df)
+          }
+          else{
+            stop("runRCOLoops: Bounds and conviction are inconsistent")
+          }
+        }else{
+          stop("download_target_settings: target settings contains duplicated tickers")
+        }
+      }else{
+        stop("download_target_settings: target settings file structure is wrong")
+      }
+    }else{
+      stop("download_target_settings: File is empty")
+    }
+  }
+
+  get_cov_ma <- function(cov_id = NULL,
+                         portfolio,
+                         cov_ret,
+                         calc_method,
+                         sec_names){
+    if(is.null(cov_id)){
+      # If CovMa is not specified download the latest one
+      CovID <- get_default_CovMaID(Portfolioname = portfolio)
+    }else{
+      # If secified use it
+      CovID <- cov_id
+    }
+
+    # Get covariance matrix
+    cov <- f.getCovFromSQL(RunID = CovID, CalculationMethod = calc_method, WideOrLong = "wide")
+
+    # Make sure that tickers order is consistent
+    cov <- f.matchCOVtoTickers (Tickers = sec_names, COV = as.data.frame(cov))
+
+    cov_set_ID <- paste(calc_method, cov_ret, CovID, sep = "_")
+    cov_ma <- as.matrix(cov)
+
+    return(list(cov_ma = cov_ma, cov_set_ID = cov_set_ID))
+  }
 
 
+
+
+
+
+
+  print("starting...")
+  #checks
+  stopifnot(length(ShortIndexWithOptimCash)==1)
+
+  # define file pathes (add switch to specify exact location for each portfolio)
+  if(Portfolio == "RE_EU"){
+
+    file_path_in <- "G:/FAP/Immobilien_Modell/"
+    input_file <- "Betsizing.xlsx"
+
+  }else{
+
+    file_path_in <- "G:/FAP/Equities/Betsizing/"
+    input_file <- paste("bet_targets_",Portfolio,".xlsx",sep="",collapse="")     #"bet_targets_epra.csv"              #"bet_targets_epra.csv"
+  }
+
+  file_path_out <- paste("G:/FAP/Equities/Betsizing/R_results/",
+                         Portfolio, "/", sep = "", collapse = "")
+
+  # Create Settings matrix
+  # expand.grid creates a data frame with all possible combinaiton of settings
+  # Some of combinations are not valid
+  all_possible_settings_df <- expand.grid(
+    TargetTE = TargetTE,
+    MaxRelWeight = MaxRelWeight,
+    Trials = Trials,
+    xtol_rel = xtol_rel,
+    algo = algo,
+    CashTolerance = CashTolerance,
+    LeverageTolerance = LeverageTolerance,
+    CovCalcWay = CovCalcWay,
+    CovReturns = CovReturns,
+    InputParameters = InputParameters,
+    ShortIndexWithOptimCash = ShortIndexWithOptimCash,
+    Specif_COV = Specif_COV,
+    IndexFlex = IndexFlex,
+    Ix_eq_Cash = Ix_eq_Cash,
+    NetInvLambda = NetInvLambda,
+    LowConvictionExitInDays = LowConvictionExitInDays,
+    ConvictionGroups = ConvictionGroups,
+    stringsAsFactors = FALSE)
+
+  # Only feasible settings should be used
+  valid_settings_df <- f.delete_infeasible_settings(all_possible_settings_df)
+
+  # START LOOP
+  valid_settings_number <- nrow(valid_settings_df)
+  # Add settings ID column
+  valid_settings_df$setID <- 1:valid_settings_number
+
+  # Get DB connection
+  con <- FAFunc.GetDB()
+
+  # Note 1: Based on code and output data structures number of securities MUST be the save,
+  #         otherwise one cannot store 21 (for example) optimal weights in a matrix with 20 rows
+  # Note 2: target settings (lb, ub ...) do not change each iteration.
+  #         These values can only differ in different settings Excel worksheets
+
+  # Define structures which are used in the loop.
+  # They should not be local in loop, however in R (and only in R)
+  # it is not mandatory, it would still work
+
+  optim_details_names_v <- list(c("Calculated","TEact-TEtarg","%weight_limits_hit",
+                                "NetInvestment","PortBeta","IndexPosition",
+                                "target_function_value","iterations","calctime",
+                                "total_rb_dev","validResult"))
+
+  # Define variables just to show which are common for each iteration
+  sec_nr <- NULL
+  sec_names_v <- NULL
+  target_settings_df <- NULL
+  opt_rel_weights_ma <- NULL
+  optim_details_ma <- NULL
+  target_settings_ma <- NULL
+  targ_3D_array <- NULL
+  cov_3D_array <- NULL
+
+  # For each optimization settings set
+  for(k in 1:valid_settings_number){
+
+    print(paste(Sys.time()," started loop  ",k, " of ",valid_settings_number,sep=""))
+
+    # Take signle settings set
+    set <- valid_settings_df[k, ]
+    print(set)
+
+    current_targ_settings_set <- as.character(set$InputParameters)
+
+    # In the first iteration define output structures
+    if(k == 1){
+
+      # settings will be saved in target_3D_array
+      target_settings_df <- read_target_settings_from_excel(file_path_in = file_path_in,
+                                                            input_file = input_file,
+                                                            ws_name = current_targ_settings_set)
+      sec_names_v <- target_settings_df$Ticker
+      sec_nr <- length(sec_names_v)
+
+      # Optimal weights stored as a column. Column name is settings ID
+      opt_rel_weights_ma <- matrix(nrow = sec_nr, ncol = valid_settings_number)
+      rownames(opt_rel_weights_ma) <- sec_names_v
+      colnames(opt_rel_weights_ma) <- paste("set", valid_settings_df$setID, sep="")
+
+      # For each loop we save optimization details in a matrix as a columns
+      optim_details_ma <- matrix(nrow = length(optim_details_names_v),
+                                 ncol = valid_settings_number)
+
+      rownames(optim_details_ma) <- optim_details_names_v
+      colnames(optim_details_ma) <- paste("set", valid_settings_df$setID, sep = "")
+
+      # 3D array to store the different input tables. InputParameters can be a vector
+      # note: targ_tab_name is a name in Excel worksheet for a target table to use
+      targ_3D_array <- array(dim = c(dim(target_settings_df), length(InputParameters)),
+                             dimnames = list(sec_names = sec_names_v,
+                                             targ_col_names = colnames(target_settings_df),
+                                             targ_tab_names = InputParameters))
+      # Save target settings
+      target_settings_ma <- as.matrix(target_settings_df)
+      targ_3D_array[,,set$InputParameters] <- target_settings_ma
+
+      different_covsettings_df <- unique(valid_settings_df[, c("CovCalcWay", "CovReturns", "Specif_COV")])
+
+      # Apply with  MARGIN = 1 means "work with rows"
+      cov_set_IDs <- apply(X = different_covsettings_df,
+                           MARGIN = 1,
+                           FUN = paste, collapse = "_")
+
+      # 3D array to store CovMa for each set of settings
+      cov_3D_array <- array(dim = c(sec_nr, sec_nr, nrow(different_covsettings_df)),
+                   dimnames = list(cov_row_names = sec_names_v,
+                                   cov_col_names = sec_names_v,
+                                   CovsetID = cov_set_IDs))
+
+      # Get covariance matrix for the current iteration
+      cov_res_list <- get_cov_ma(cov_id = set$Specif_COV,
+                                 portfolio = Portfolio,
+                                 cov_ret = set$CovReturns,
+                                 calc_method = set$CovCalcWay,
+                                 sec_names = sec_names_v)
+
+      # Save covariance matrix for the current settings set
+      cov_ma <- cov_res_list$cov_ma
+      cov_3D_array[,,cov_res_list$cov_set_ID] <- cov_ma
+
+    }else{
+      # k != 1. Not the first iteration
+
+      # get the vector of downloaded target settings sets
+      downloaded_targ_settings_sets <- targ_3D_array[1,1, ]
+
+      ind_targ <- which(current_targ_settings_set %in%  downloaded_targ_settings_sets)
+
+      if(length(ind_targ) > 0 ){
+        # Use existing
+        target_settings_ma <- targ_3D_array[,,ind_targ]
+      }else{
+        # download new target settings
+        target_settings_df <- read_target_settings_from_excel(file_path_in = file_path_in,
+                                                              input_file = input_file,
+                                                              ws_name = current_targ_settings_set)
+      }
+
+      if(is.na(set$Specif_COV) == FALSE){
+        # for CovCalcWay and CovReturns there are defaults, NA are impossible
+        cov_id <- set$Specif_COV
+      }else{
+        cov_id <- get_default_CovMaID(Portfolioname = Portfolio)
+      }
+      # Create cov_set_id to check if cov ma is already downloaded
+      cov_set_ID <- paste(set$CovCalcWay, set$CovReturns, cov_id, sep = "_")
+      # get the vector of downloaded cov ma settings ID
+      downloaded_cov_ma_settings_sets <- cov_3D_array[1,1, ]
+
+      ind_cov <- which(cov_set_ID %in% downloaded_cov_ma_settings_sets)
+
+      if(length(ind_cov) > 0 ){
+        cov_ma <- cov_3D_array[,,ind_cov]
+      }else{
+        # download new covariance matrix
+        cov_res_list <- get_cov_ma(cov_id = cov_id,
+                                   portfolio = Portfolio,
+                                   cov_ret = set$CovReturns,
+                                   calc_method = set$CovCalcWay,
+                                   sec_names = sec_names_v)
+
+        # Save covariance matrix for the current settings set
+        cov_ma <- cov_res_list$cov_ma
+        cov_3D_array[,,cov_res_list$cov_set_ID] <- cov_ma
+      }
+
+      print(paste("For the loop",k,"the COV with RunID",cov_id,"is used"))
+      valid_settings_df$CovID[k] <- cov_id
+    }
+
+
+    # Optimization
+    # reduce to active portfolio (with convictions != 0)
+    # and seperate TickerInfo from its covariances
+    # (necessary as target function cant handle 0-weights as it calculates ......*log(w)*....)
+    sec_active <- target_settings_df$conviction != 0
+    targ_active <- target_settings_df[sec_active,]
+    cov_active <- f.matchCOVtoTickers (Tickers = rownames(targ_active), COV = cov_ma)
+
+    RCOthisLoop <- f.runRCO(targ_active, set, cov_active)
+
+    # store the results in Loop-Matrices if valid
+    if(RCOthisLoop$optim_details["validResult"])
+    {
+      opt_rel_weights_ma[sec_active, k] <- RCOthisLoop$rw
+      opt_rel_weights_ma[!sec_active, k] <- 0
+      optim_details_ma[,k] <- RCOthisLoop$optim_details
+    }
+    # intermediary save output file to not loose everything if a later loop gets interrupted
+    dat <- list(Settings = valid_settings_df,
+                optim_details = optim_details_ma,
+                RW = opt_rel_weights_ma,
+                targ_3D_array = targ_3D_array,
+                COV = cov_3D_array)
+
+    output_file_name <- paste(file_path_out, Sys.Date(), " RCOres.R", sep = "")
+    save(dat, file = output_file_name)
+  }
+  print(paste("all", k ,"loops completed. Storing of results in process"))
+
+  # OUTPUT RESULTS
+  RCOres_l <- list(settings_df = valid_settings_df,
+                   details_ma = optim_details_ma,
+                   rw_ma = opt_rel_weights_ma,
+                   targ_3D_array = targ_3D_array,
+                   cov_3D_array = cov_3D_array)
+
+  f.writeOptdetails2xlsx(RCOres_l = RCOres_l,
+                         Portfolio,
+                         Sys.Date(),
+                         valid_settings_df$ShortIndexWithOptimCash[1])
+  return(RCOres_l)
+}
