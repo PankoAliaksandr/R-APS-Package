@@ -516,13 +516,13 @@ f.matchCOVtoTickers <- function(Tickers,COV) {
         # we know that tickers are the same. Only sequience can be theoretically different
         # change order to make it the same
         # if COV has more tickers than Tickers it will also work
-        COV <- COV[Tickers, Tickers]
+        cov_df <- COV[Tickers, Tickers]
 
         # Convert to numeric matrix
-        cov_ma <- as.matrix(sapply(COV, f.as.numeric.factor))
+        cov_ma <- as.matrix(sapply(cov_df, f.as.numeric.factor))
 
         if(isSymmetric.matrix(cov_ma, check.attributes = FALSE) == TRUE){
-          return(COV)
+          return(cov_df)
         }else{
           stop("Covariance Matrix is not symmetric")
         }
@@ -1199,7 +1199,7 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
       print("optimization failed or direction constrained violated or target function Inf ,invalid result. Solution reset to NA") #no stop as loop should continue!!!
 
       # initialize optimal solution (weights)
-      rw <- pw <- rep(NA, length(rw))
+      rc <- rw <- pw <- rep(NA, length(rw))
       names(rw) <- colnames(cov)
 
       # store results in optim_details
@@ -1232,6 +1232,7 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
                                                 ub = targ$ub,
                                                 set = set,
                                                 rb_target = targ$RiskBudget) #rw=rw;COV=COV;lb=targ$lb.;ub=targ$ub;set=set
+      rc <- orc$rc
 
       # store results in optim_details
       optim_details <- c(Calculated = as.character(Sys.time()),
@@ -1254,12 +1255,12 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
         cat(paste("The Risk-Contribution-Optimization was successful on attempt ",attempt-1), " and the resulting weights are:", sep="\n")
         print(data.frame(conviction = targ$conviction,
                          rw = rw,
-                         RiskContr = orc$rc))
+                         RiskContr = rc))
 
       }else{ cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",orc$te - set$TargetTE, " and the resulting weights are:", sep="\n")
         print(data.frame(conviction = targ$conviction,
                          rw = rw,
-                         RiskContr = orc$rc))
+                         RiskContr = rc))
       }
     }
   }
@@ -1267,7 +1268,7 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
   return(list(rw = rw,
               pw = pw,
               optim_details = optim_details,
-              RiskContribution = orc$rc))
+              RiskContribution = rc))
 }
 
 runRCOFromAPS <- function(portfolioName,
@@ -1550,8 +1551,7 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
   stopifnot(class(RCOres_l$rw_ma) == "matrix")
   stopifnot(class(RCOres_l$targ_3D_array) == "array")
   stopifnot(class(RCOres_l$cov_3D_array) == "array")
-  stopifnot(class(OnlyID_v) == "numeric")
-  stopifnot("setID" %in% colnames(settings_df))
+  stopifnot("setID" %in% colnames(RCOres_l$settings_df))
 
   settings_df <- RCOres_l$settings_df
   optres_ma <- rbind(RCOres_l$details_ma, RCOres_l$rw_ma)
@@ -1559,6 +1559,7 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
 
   if(is.null(OnlyID_v) == FALSE)
   {
+    stopifnot(class(OnlyID_v) == "numeric")
     # Some particular settings are required
     existing_set_ind <- which(OnlyID_v %in% settings_df$setID)
 
@@ -1630,7 +1631,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
                         CovCalcWay="nlshrink",               #Covariance calculation setting for SQL-Covariance. #c("nlshrink","cov")
                         CovReturns="abs",                    #Covarniance calculation setting for SQL-Covariance. #c("abs","rel")
                         ShortIndexWithOptimCash=0,           #set 0 or 1 to implement the optimized Cash position by shorting the ind   ex via selling proportional weights in each index-member
-                        InputParameters="Signals4R",         #character string like fitting the variable input in the specified targ-sheet
+                        InputParameters="Signals4R_test",         #character string like fitting the variable input in the specified targ-sheet
                         Specif_COV=NA,                        #set specific covariance ID, -10 for testing and NA for most recent available for the chosen portfolio
                         xtol_rel=10^-7,
                         IndexFlex=FALSE,
@@ -1663,7 +1664,10 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
   # f.matchCOVtoTickers
   # f.runRCO
   # f.writeOptdetails2xlsx
+  # read_target_settings_from_excel
+  # get_cov_ma
 
+  # Internal(private) functions
   read_target_settings_from_excel <- function(file_path_in, input_file, ws_name){
 
     # get risk budget targets, lower bounds for each ticker,
@@ -1684,7 +1688,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
       if(all(colnames(target_settings_df) %in% targ_col_names_v)){
 
         # Check that there are no duplicates
-        if(length(unique(target_settings_df$Ticker)) == nrow(target_settings_df$Ticker)){
+        if(length(unique(target_settings_df$Ticker)) == length(target_settings_df$Ticker)){
 
           # Weight and convictions must have the same sign.
           # Weights have lower and upper bounds
@@ -1718,14 +1722,26 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     }
   }
 
-  get_cov_ma <- function(cov_id = NULL,
+  get_cov_ma <- function(cov_id = NA,
                          portfolio,
                          cov_ret,
                          calc_method,
                          sec_names){
-    if(is.null(cov_id)){
+
+    # Check input
+    stopifnot(is.character(portfolio) && length(portfolio) == 1)
+    stopifnot(is.character(cov_ret) && length(cov_ret) == 1)
+    stopifnot(is.character(calc_method) && length(calc_method) == 1)
+    stopifnot(is.character(sec_names) && length(sec_names) > 0)
+
+    if(is.na(cov_id)){
       # If CovMa is not specified download the latest one
       CovID <- get_default_CovMaID(Portfolioname = portfolio)
+      if(is.na(CovID)){
+        stop("get_cov_ma: There are no default covariance matrxi for ", portfolio)
+      }else{
+        # Nothing it is ok
+      }
     }else{
       # If secified use it
       CovID <- cov_id
@@ -1735,19 +1751,13 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     cov <- f.getCovFromSQL(RunID = CovID, CalculationMethod = calc_method, WideOrLong = "wide")
 
     # Make sure that tickers order is consistent
-    cov <- f.matchCOVtoTickers (Tickers = sec_names, COV = as.data.frame(cov))
+    cov <- f.matchCOVtoTickers(Tickers = sec_names, COV = as.data.frame(cov))
 
     cov_set_ID <- paste(calc_method, cov_ret, CovID, sep = "_")
     cov_ma <- as.matrix(cov)
 
     return(list(cov_ma = cov_ma, cov_set_ID = cov_set_ID))
   }
-
-
-
-
-
-
 
   print("starting...")
   #checks
@@ -1811,10 +1821,10 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
   # They should not be local in loop, however in R (and only in R)
   # it is not mandatory, it would still work
 
-  optim_details_names_v <- list(c("Calculated","TEact-TEtarg","%weight_limits_hit",
+  optim_details_names_v <- c("Calculated","TEact-TEtarg","%weight_limits_hit",
                                 "NetInvestment","PortBeta","IndexPosition",
                                 "target_function_value","iterations","calctime",
-                                "total_rb_dev","validResult"))
+                                "total_rb_dev","validResult")
 
   # Define variables just to show which are common for each iteration
   sec_nr <- NULL
@@ -1844,7 +1854,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
       target_settings_df <- read_target_settings_from_excel(file_path_in = file_path_in,
                                                             input_file = input_file,
                                                             ws_name = current_targ_settings_set)
-      sec_names_v <- target_settings_df$Ticker
+      sec_names_v <- row.names(target_settings_df)
       sec_nr <- length(sec_names_v)
 
       # Optimal weights stored as a column. Column name is settings ID
@@ -1950,17 +1960,15 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     # (necessary as target function cant handle 0-weights as it calculates ......*log(w)*....)
     sec_active <- target_settings_df$conviction != 0
     targ_active <- target_settings_df[sec_active,]
-    cov_active <- f.matchCOVtoTickers (Tickers = rownames(targ_active), COV = cov_ma)
+    cov_active <- f.matchCOVtoTickers (Tickers = row.names(targ_active), COV = as.data.frame(cov_ma))
 
     RCOthisLoop <- f.runRCO(targ_active, set, cov_active)
 
-    # store the results in Loop-Matrices if valid
-    if(RCOthisLoop$optim_details["validResult"])
-    {
-      opt_rel_weights_ma[sec_active, k] <- RCOthisLoop$rw
-      opt_rel_weights_ma[!sec_active, k] <- 0
-      optim_details_ma[,k] <- RCOthisLoop$optim_details
-    }
+    # store the results in Loop-Matrices (non-valid results indicated with NA)
+    opt_rel_weights_ma[sec_active, k] <- RCOthisLoop$rw
+    opt_rel_weights_ma[!sec_active, k] <- 0
+    optim_details_ma[,k] <- RCOthisLoop$optim_details
+
     # intermediary save output file to not loose everything if a later loop gets interrupted
     dat <- list(Settings = valid_settings_df,
                 optim_details = optim_details_ma,

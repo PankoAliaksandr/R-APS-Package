@@ -1,5 +1,3 @@
-rm(list = ls())
-
 # You can learn more about package authoring with RStudio at:
 #
 #   http://r-pkgs.had.co.nz/
@@ -299,7 +297,7 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
   print("Analyst Portfolio ID parameter is not valid")
   stop("Analyst Portfolio ID parameter is not valid")
 }
-}
+  }
 
 # get COV for ID from sql
 f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long")){
@@ -815,7 +813,7 @@ get_rcb <- function(weight_v, cov){
 
     # Dimensions check
     stopifnot(isTRUE(is.vector(weight_v)) &&
-              length(weight_v) == nrow(cov)
+                length(weight_v) == nrow(cov)
               && nrow(cov) == ncol(cov))
 
     RCO_names_v <- names(weight_v)
@@ -1438,7 +1436,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # soft leverage constrained: depends on Cash- and LeverageTolerance, needed in Settings to filter out algos that do not work!
       all_possible_settings_df$SoftNetInvConstraint <- ifelse(all_possible_settings_df$LeverageTolerance != 0 |
-                                                              all_possible_settings_df$CashTolerance != 0,
+                                                                all_possible_settings_df$CashTolerance != 0,
                                                               TRUE, FALSE)
 
       # Available algorithms
@@ -1448,7 +1446,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
       # Soft leverage constrained does not work with Lagrangian optimizer (as Lagrangian uses an equality constraint!)
       # find infeasible combinations
       ind_to_delete <- which(all_possible_settings_df$algo %in% algo_lagrange &
-                             all_possible_settings_df$SoftNetInvConstraint == TRUE)
+                               all_possible_settings_df$SoftNetInvConstraint == TRUE)
 
       if (length(ind_to_delete) > 0){
         # it means that there is at least one infeasible combination
@@ -1466,8 +1464,8 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo
       ind_to_delete <- which((all_possible_settings_df$algo %in% algo_gradient |
-                              all_possible_settings_df$SoftNetInvConstraint |
-                              all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
+                                all_possible_settings_df$SoftNetInvConstraint |
+                                all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
 
       if (length(ind_to_delete) > 0){
 
@@ -1484,7 +1482,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint == TRUE
       ind_to_delete <- which((all_possible_settings_df$NetInvLambda > 0 &
-                              all_possible_settings_df$SoftNetInvConstraint == FALSE))
+                                all_possible_settings_df$SoftNetInvConstraint == FALSE))
 
       if (length(ind_to_delete) > 0){
 
@@ -1513,8 +1511,8 @@ get_default_CovMaID <- function(Portfolioname){
   stopifnot(class(Portfolioname) == "character")
 
   def_cov_id_query <- paste0("select max(CovMatrixRunID) as defCovMaID
-                            from betsizing.CalculationDefaultSettings
-                            where CustomPortfolioName = '", Portfolioname, "'")
+                             from betsizing.CalculationDefaultSettings
+                             where CustomPortfolioName = '", Portfolioname, "'")
 
   # Execute Query and return the default COVID
   con <- FAFunc.GetDB()
@@ -1822,9 +1820,9 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
   # it is not mandatory, it would still work
 
   optim_details_names_v <- c("Calculated","TEact-TEtarg","%weight_limits_hit",
-                                "NetInvestment","PortBeta","IndexPosition",
-                                "target_function_value","iterations","calctime",
-                                "total_rb_dev","validResult")
+                             "NetInvestment","PortBeta","IndexPosition",
+                             "target_function_value","iterations","calctime",
+                             "total_rb_dev","validResult")
 
   # Define variables just to show which are common for each iteration
   sec_nr <- NULL
@@ -1888,9 +1886,9 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
 
       # 3D array to store CovMa for each set of settings
       cov_3D_array <- array(dim = c(sec_nr, sec_nr, nrow(different_covsettings_df)),
-                   dimnames = list(cov_row_names = sec_names_v,
-                                   cov_col_names = sec_names_v,
-                                   CovsetID = cov_set_IDs))
+                            dimnames = list(cov_row_names = sec_names_v,
+                                            cov_col_names = sec_names_v,
+                                            CovsetID = cov_set_IDs))
 
       # Get covariance matrix for the current iteration
       cov_res_list <- get_cov_ma(cov_id = set$Specif_COV,

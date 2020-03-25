@@ -20,7 +20,7 @@
 #   0. Check dependencies (libraries)
 #   1. After line "call_params = commandArgs(trailingOnly = TRUE)" in the beginning paste:
     call_params[1] = "APSFBEQCHL"
-    call_params[2] = "2020-03-11"
+    call_params[2] = "2020-03-13"
     call_params[3] = "297"
     call_params[4] = "40"
     call_params[5] = 0
@@ -45,10 +45,9 @@
 #      This part is done id C# and account for default setting as well as direct user input
 
 timestamp()
+source("G:/FAP/Equities/Betsizing/Code/RCO.R")
 
 call_params = commandArgs(trailingOnly = TRUE)
-
-source("G:/FAP/Equities/Betsizing/Code/RCO.R")
 
 if(length(call_params) > 0){
 
@@ -65,7 +64,7 @@ if(length(call_params) > 0){
   print(paste("For the Covariance Matrix is the CalcMethod '",calc_method,"' used",sep=""))
 
   # Run main function with required params
-  APS::runRCOFromAPS(portfolioName = call_params[1],
+  runRCOFromAPS(portfolioName = call_params[1],
                 calculation_date = date,
                 covMaSetID = call_params[3],
                 RCOSetID = call_params[4],
