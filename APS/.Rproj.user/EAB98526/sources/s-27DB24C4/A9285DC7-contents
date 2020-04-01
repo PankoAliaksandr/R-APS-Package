@@ -1,0 +1,4 @@
+RCO_res_l <- APS::runRCOLoops(Portfolio = "RE_EU",TargetTE =  10^-7, Specif_COV = "297")
+APS::compareRCOruns(RCOres_l = RCO_res_l,yaxis="total_rb_dev",xaxis="setID",group_by="TargetTE",pointat=1)
+APS::plotSingleSetIDfromRCOres(setid = 1,RCOres_l = RCO_res_l)
+

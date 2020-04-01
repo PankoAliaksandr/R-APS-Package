@@ -1,0 +1,230 @@
+source("G:/FAP/Equities/Betsizing/Code/RCOTest.R")
+#source("G:/FAP/Equities/Betsizing/CodeTest/scz/RCOtest.R")
+library("shiny")
+as.of <-  "2020-02-19" #
+Portfolio <- "EQ_CH_L"
+filepath <- paste("G:/FAP/Equities/Betsizing/R_results/",Portfolio,"/",sep="",collapse="")
+load(paste(filepath,as.of," RCOres.R",sep=""))
+RCOres <- dat
+
+# Depends of RCO_res_l in environment
+ui <- fluidPage(
+  pageWithSidebar(
+    headerPanel('Betsizing Evaluation'),
+    sidebarPanel(
+      # Portfolio
+      selectInput(inputId = 'Portfolio',
+                  label = 'Portfolio',
+                  choices = c('RE_EU','RE_CH','EQ_CH_L','EQ_CH_SM','EQ_EU_L','EQ_EU_SM')),
+      # Date
+      dateInput(inputId = 'datePick',
+                label = 'Calculation Date',
+                value = Sys.Date()),
+      #
+      selectInput(inputId = 'xcol',
+                  label = 'X Variable',
+                  choices = names(RCO_res_l$settings_df),
+                  selected =  names(RCO_res_l$settings_df)[1]),
+      #
+      selectInput(inputId = 'ycol',
+                  label = 'Y Variable',
+                  choices = rownames(RCO_res_l$details_ma),
+                  selected= rownames(RCO_res_l$details_ma)[10]),
+
+      # How to set color
+      selectizeInput(inputId = 'colby',
+                     label = 'Color by ',
+                     choices = names(RCO_res_l$settings_df),
+                     selected =  names(RCO_res_l$settings_df)[c(6,7)],
+                     multiple = TRUE),
+      # Settings ID
+      numericInput(inputId = 'setid',
+                   label = 'Setid for detailed plot',
+                   value = 1,
+                   min = 1,
+                   max = nrow(RCO_res_l$details_ma)),
+
+      # Type of covariance matrix
+      selectInput(inputId = 'whichCov',
+                  label = 'Calc with COV',
+                  choices = c("used for opt","nlshrink_abs_NA","nlshrink_rel_NA"),
+                  selected = "used for opt"),
+
+      # to add some noise
+      sliderInput(inputId = "Jitter",
+                  label = "Jitter:",
+                  min = 0,
+                  max = 1.5,
+                  value = 0),
+
+      checkboxInput(inputId = 'AddSet2SQL',
+                    label = 'Add Settings to SQL if saved',
+                    value = FALSE)
+
+    ),
+    mainPanel(column=2,
+              plotOutput('plot1', click = "plot1_click"),
+              plotOutput('plot2'),
+              uiOutput("tab"),
+              actionButton("do", "Implement current id - write it into xls")
+    )
+  )
+)
+
+
+server <- function(input, output, session) {
+
+
+
+  #link to wiki
+  # function a() corresponds to tag <a> in HTML5. Tag <a> is a hyperlink
+  url <- a("wiki", href="http://wiki.suvanet.ch/display/fai/Bets-Sizing%3A+Optimierung+und+deren+Beurteilung#Bets-Sizing%3AOptimierungundderenBeurteilung-EvaluationInShiny")
+
+  #
+  output$tab <- renderUI({
+    tagList("input description:", url)
+  })
+
+
+
+#   # Combine the selected variables into a new data frame
+#   selectedData <- reactive({
+#     as.of <-  input$datePick
+#     Portfolio <- input$Portfolio
+#
+#     filepath <- paste0("G:/FAP/Equities/Betsizing/R_results/", Portfolio)
+#     load(paste(filepath, as.of, " RCOres.R", sep = ""))
+#
+#     EvalRCOres <- dat
+#     Covtypes <- "used for opt"
+#
+#
+#     for (i in dimnames(EvalRCOres$COV)[3]){
+#       Covtypes <- c(Covtypes,as.character(i))
+#     }
+#
+#
+#     updateNumericInput(session = session,
+#                        inputId = 'setid',
+#                        label = 'setid for detailed plot',
+#                        value = 1,
+#                        min = 1,
+#                        max = nrow(EvalRCOres$Optim_Details))
+#
+#     updateSelectInput(session = session,
+#                       inputId = 'whichCov',
+#                       label = 'Calc with COV',
+#                       choices = Covtypes,
+#                       selected ="used for opt")
+#
+#     # update choice options: reduce to what has been varied!
+#     S <- EvalRCOres$SET
+#     varInputs <- colnames(S)[lengths(apply(S,2,unique))>1]
+#
+#     updateSelectInput(session = session,
+#                       inputId = 'xcol',
+#                       label = 'X Variable',
+#                       choices = varInputs,
+#                       selected = ifelse("TargetTE" %in% varInputs,"TargetTE",varInputs[1]))
+#
+#     updateSelectizeInput(session = session,
+#                          inputId = 'colby',
+#                          label = 'Color by ',
+#                          choices = varInputs,
+#                          selected = varInputs[2])
+#
+#     # tickbox
+#     output$addSet2SQL <- reactive({input$AddSet2SQL})
+#
+#
+#     EvalRCOres
+#   })
+#
+#   output$plot1 <- renderPlot({
+#     EvalRCOres <- selectedData()
+#
+#     # The output is a plot
+#     compareRCOruns(RCOres_l = EvalRCOres,
+#                    yaxis = input$ycol,
+#                    xaxis = input$xcol,colby = input$colby,
+#                    pointat = input$setid,
+#                    Jitter = input$Jitter,
+#                    whichCov = input$whichCov)
+#
+#   })
+#
+#   output$plot2 <- renderPlot({
+#
+#     EvalRCOres <- selectedData()
+#
+#     # TODO is missing in APS package
+#     plotSingleSetIDfromRCOres(input$setid,
+#                               RCOres = EvalRCOres,
+#                               covstr = input$whichCov)
+#
+#
+#   })
+#
+#   #output message
+#   observeEvent(input$do, {
+#
+#     EvalRCOres <- selectedData()
+#
+#     f.writeOptdetails2xlsx(RCOres_l = EvalRCOres,
+#                            Portfolio = input$Portfolio,
+#                            Calcdate = "LIVE",
+#                            ShortIndexWithOptimCash = 1,
+#                            ZeroNetInvestment = FALSE,
+#                            OnlyID = input$setid)
+#
+#     if(input$AddSet2SQL) {
+#       set <- EvalRCOres$SET[input$setid,]
+#       inSQLas <- f.writeRCOsettingsToSQL(set)
+#     }else{
+#       inSQLas <- "the settings have not been backed up in the DB"
+#     }
+#
+#     showModal(modalDialog(
+#       title = paste("File for setID",input$setid,"has been written as xls-file"),
+#       strong(paste("Its filename is",input$Portfolio,"_LIVE_optdetails.xlsx"),
+#              br(),
+#              "It has been written to the location:",
+#              br(),
+#              paste0("G:/FAP/Equities/Betsizing/R_results/",input$Portfolio),
+#              "and its Settings are in SQL as: ",
+#              br(),
+#              inSQLas,
+#              br(),
+#              br(),
+#              easyClose = TRUE
+#       )))
+#   }
+#   )
+#
+#   observeEvent(input$plot1_click,
+#                {
+#                  EvalRCOres <- selectedData()
+#                  optres <- cbind(t(EvalRCOres$Optim_Details),EvalRCOres$SET)
+#                  optres. <- optres[,c(input$xcol,input$ycol)]
+#                  click <- input$plot1_click
+#                  click <- c(click$x,click$y)
+#
+#                  optres$dist <- mydistfun(values=optres.,click=click)
+#                  clickselected_setID <- optres[which.min(optres$dist),"setID"]
+#
+#
+#
+#                  if(exists("clickselected_setID"))
+#                  {
+#                    updateNumericInput(session = session,
+#                                       inputId = 'setid',
+#                                       label = 'setid for detailed plot',
+#                                       value = clickselected_setID,
+#                                       min = 1,
+#                                       max = nrow(RCOres$Optim_Details))
+#                  }
+#                }
+#   )
+
+}
+shiny::shinyApp(ui=ui,server=server)

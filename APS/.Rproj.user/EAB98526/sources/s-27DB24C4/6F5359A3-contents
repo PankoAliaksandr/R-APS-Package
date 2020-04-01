@@ -15,5 +15,8 @@ Imports:
   dplyr,
   stats,
   gridExtra,
-  xlsx
+  xlsx,
+  ggplot2,
+  sfsmisc,
+  graphics
 RoxygenNote: 7.0.2
