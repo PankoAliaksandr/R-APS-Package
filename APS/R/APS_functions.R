@@ -155,19 +155,22 @@ getRCOSetSettings <- function(RCOSetID, connection){
         return(RCO_settings_df)
       }
       else{
-        print(paste0("Setting set ", RCOSetID, " is empty (no settings)"))
-        stop("Setting set ", RCOSetID, " is empty (no settings)")
+        print(paste0("NLopt solver status: ", -11))
+        paste0("NLopt solver status message: Setting set ", RCOSetID, " is empty (no settings)")
+        stop(paste0("getRCOSetSettiongs: Setting set ", RCOSetID, " is empty (no settings)"))
       }
     }else{
       # class(result_df) != "data.frame")
-      print("getRCOSetSettiongs: Select statement contains an error ")
+      print(paste0("NLopt solver status: ", -100))
+      print(paste0("NLopt solver status message: getRCOSetSettiongs: Select statement contains an error"))
       stop("getRCOSetSettiongs: Select statement contains an error ")
     }
 
   }else{
     # RCOSetID == NULL OR RCOSetID == NA
-    print("RCO Settings ID parameter is not valid")
-    stop("RCO Settings ID parameter is not valid")
+    print(paste0("NLopt solver status: ", -100))
+    print(paste0("NLopt solver status message: getRCOSetSettiongs: RCO Settings ID parameter is empty"))
+    stop("RCO Settings ID parameter is empty")
   }
 }
 
@@ -192,12 +195,14 @@ get_ap_bb_ticker_by_name <- function(portfolioName, connection){
       return(as.character(result_df$Ticker[1]))
     }
     else{
-      print(paste0("Portfolio", portfolioName, " does not exist (or ambiguous) on the chosen date"))
+      print(paste0("NLopt solver status: ", -12))
+      print(paste0("NLopt solver status message: Portfolio ", portfolioName, " does not exist (or ambiguous) on the chosen date"))
       stop("Portfolio", portfolioName, " does not exist (or ambiguous) on the chosen date")
     }
   }else{
     # class(result_df) != "data.frame")
-    print("get_ap_bb_ticker_by_name: Select statement contains an error ")
+    print(paste0("NLopt solver status: ", -100))
+    print(paste0("NLopt solver status message: get_ap_bb_ticker_by_name: Select statement contains an error"))
     stop("get_ap_bb_ticker_by_name: Select statement contains an error ")
   }
 }
@@ -277,29 +282,35 @@ getTargetTable <- function(portfolioName, calculation_date, isReal, connection){
             return(result_df)
           }
           else{
-            print(paste0("Portfolio", ap_bb_ticker, " does not exist on ", calculation_date))
+
+            print(paste0("NLopt solver status: ", -13))
+            print(paste0("NLopt solver status message: Portfolio", ap_bb_ticker, " does not exist on ", calculation_date))
             stop("Portfolio", ap_bb_ticker, " does not exist on ", calculation_date)
           }
         }else{
           # class(result_df) != "data.frame")
-          print("getTargetTable: Select statement contains an error ")
+          print(paste0("NLopt solver status: ", -100))
+          print("NLopt solver status message: getTargetTable: Select statement contains an error ")
           stop("getTargetTable: Select statement contains an error ")
         }
       }else{
         # calculation date is not in date format
-        print("Calculation date is  not in 'Date' format")
+        print(paste0("NLopt solver status: ", -100))
+        print("NLopt solver status message: Calculation date is  not in 'Date' format")
         stop("Calculation date is  not in 'Date' format")
       }
     }else{
       # Calculation date is empty
-      print("Calculation date parameter is empty")
+      print(paste0("NLopt solver status: ", -100))
+      print("NLopt solver status message: Calculation date parameter is empty")
       stop("Calculation date parameter is empty")
     }
-}else{
-  # AP_ID == NULL OR AP_ID == NA
-  print("Analyst Portfolio ID parameter is not valid")
-  stop("Analyst Portfolio ID parameter is not valid")
-}
+  }else{
+    # AP_ID == NULL OR AP_ID == NA
+    print(paste0("NLopt solver status: ", -100))
+    print("NLopt solver status message: Analyst Portfolio ID parameter is empty")
+    stop("Analyst Portfolio ID parameter is empty")
+  }
 }
 
 # get COV for ID from sql
@@ -345,12 +356,17 @@ f.getCovFromSQL <- function(RunID,CalculationMethod,WideOrLong=c("wide","long"))
       }
     }else{
       # No rows in CovMa
-      stop(paste("Chosen Covariance with id", RunID,
+      print(paste0("NLopt solver status: ", -14))
+      print(paste("NLopt solver status message: Chosen Covariance with id", RunID,
+                  "and CalculationMethod", CalculationMethod, "does not exist!"))
+      stop(paste("NLopt solver status message: Chosen Covariance with id", RunID,
                  "and CalculationMethod", CalculationMethod, "does not exist!"))
     }
   }else{
     # reult has class != data.frame
-    stop("getCovFromSQL: Query contains a mistake")
+    print(paste0("NLopt solver status: ", -100))
+    print("NLopt solver status message: getCovFromSQL: Query contains a mistake")
+    stop("NLopt solver status message: getCovFromSQL: Query contains a mistake")
   }
 
   return(cov_df)
@@ -464,14 +480,17 @@ f.writeRCOresToSQL <- function(opt_rel_weights_v,
         # 0 is sucess
         return(0)
       }else{
-        stop("some error in sql insert")
+        print(paste0("NLopt solver status: ", -100))
+        stop("NLopt solver status message: some error in sql insert")
       }
     }else{
-      stop("The order of constituents is not the same for absolute and relative optimized weights",
+      print(paste0("NLopt solver status: ", -100))
+      stop("NLopt solver status message: The order of constituents is not the same for absolute and relative optimized weights",
            " or names are empty")
     }
   }else{
-    stop("writeRCOresToSQL: at least one of the input parameters is of a wrong type")
+    print(paste0("NLopt solver status: ", -100))
+    stop("NLopt solver status message: writeRCOresToSQL: at least one of the input parameters is of a wrong type")
   }
   #example
   #res_rel <- RCOres$RW[,1];res_p <- res_rel-RCOres$targ_3D_array[,"lb",1];portfolio <- "EQ_CH_L"; covID <- as.integer(7) ;setID <- as.integer(1) ;calcdatetime <- as.character(Sys.Date())
@@ -525,16 +544,24 @@ f.matchCOVtoTickers <- function(Tickers,cov_df) {
         if(isSymmetric.matrix(cov_ma, check.attributes = FALSE) == TRUE){
           return(cov_df)
         }else{
-          stop("Covariance Matrix is not symmetric")
+          print(paste0("NLopt solver status: ", -16))
+          print("NLopt solver status message: Covariance Matrix is not symmetric")
+          stop("NLopt solver status message: Covariance Matrix is not symmetric")
         }
       }else{
-        stop(paste("The following Tickers lack in Covariance matrix:", paste(missTick, collapse = ", ")))
+        print(paste0("NLopt solver status: ", -17))
+        print(paste("NLopt solver status message: The following Tickers lack in Covariance matrix:", paste(missTick, collapse = ", ")))
+        stop(paste("NLopt solver status message: The following Tickers lack in Covariance matrix:", paste(missTick, collapse = ", ")))
       }
     }else{
-      stop("CovMa: column names and row names are not the same")
+      print(paste0("NLopt solver status: ", -18))
+      print("NLopt solver status message: CovMa: column names and row names are not the same")
+      stop("NLopt solver status message: CovMa: column names and row names are not the same")
     }
   }else{
-    stop("cov_df parameter must be of data.frame type")
+    print(paste0("NLopt solver status: ", -100))
+    print("NLopt solver status message: cov_df parameter must be of data.frame type")
+    stop("NLopt solver status message: cov_df parameter must be of data.frame type")
   }
 }
 
@@ -853,10 +880,14 @@ get_rcb <- function(weight_v, cov){
       return(rcb_v)
 
     }else{
-      stop("get_rcb: covariance names and weight names are not the same or empty")
+      print(paste0("NLopt solver status: ", -100))
+      print("NLopt solver status message: get_rcb: covariance names and weight names are not the same or empty")
+      stop("NLopt solver status message: get_rcb: covariance names and weight names are not the same or empty")
     }
   }else{
-    stop("get_rcb: input has wrong type")
+    print(paste0("NLopt solver status: ", -100))
+    print("NLopt solver status message: get_rcb: input has wrong type")
+    stop("NLopt solver status message: get_rcb: input has wrong type")
   }
 }
 
@@ -1363,7 +1394,7 @@ runRCOFromAPS <- function(portfolioName,
 
       }, error = function(e){
         print(paste0("runRCO stopped with an error: ", e))
-        stop("runRCO stopped with an error: ", e)
+        stop("NLopt solver status message: runRCO stopped with an error: ", e)
       }
     )
 
@@ -1420,10 +1451,14 @@ runRCOFromAPS <- function(portfolioName,
                          calcdatetime = calcdatetime)
 
     }else{
-      stop("runRCOFromAPS: no valid result found in optimization")
+      print(paste0("NLopt solver status: ", -20))
+      print("NLopt solver status message: runRCOFromAPS: no valid result found in optimization. Results have not been saved in DB")
+      stop("NLopt solver status message: runRCOFromAPS: no valid result found in optimization. Results have not been saved in DB")
     }
   }else{
-    stop("runRCOFromAPS: Bounds and convictions are logically inconsistent")
+    print(paste0("NLopt solver status: ", -21))
+    print("NLopt solver status message: runRCOFromAPS: Bounds and convictions are logically inconsistent")
+    stop("NLopt solver status message: runRCOFromAPS: Bounds and convictions are logically inconsistent")
   }
 }
 
@@ -1505,10 +1540,14 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
       return(all_possible_settings_df)
 
     }else{
-      stop("f.delete_infeasible_settings: input data.frame does not have requested columns")
+      print(paste0("NLopt solver status: ", -100))
+      print("NLopt solver status message: f.delete_infeasible_settings: input data.frame does not have requested columns")
+      stop("NLopt solver status message: f.delete_infeasible_settings: input data.frame does not have requested columns")
     }
   }else{
-    stop("f.delete_infeasible_settings: input must be a data.frame")
+    print(paste0("NLopt solver status: ", -100))
+    print("NLopt solver status message: f.delete_infeasible_settings: input must be a data.frame")
+    stop("NLopt solver status message: f.delete_infeasible_settings: input must be a data.frame")
   }
 }
 
@@ -1532,11 +1571,16 @@ get_default_CovMaID <- function(Portfolioname){
       cov_id <- as.numeric(def_RunID_df$defCovMaID)
       return(cov_id)
     }else{
-      stop("get_default_CovMaID: No Covariance matrix as specified ",
+      print(paste0("NLopt solver status: ", -22))
+      print("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
+           "was calculated yet for the given portfolio")
+      stop("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
            "was calculated yet for the given portfolio")
     }
   }else{
-    stop("get_default_CovMaID: query failed ")
+    print(paste0("NLopt solver status: ", -100))
+    print("NLopt solver status message: get_default_CovMaID: query failed ")
+    stop("NLopt solver status message: get_default_CovMaID: query failed ")
   }
 }
 
@@ -1584,7 +1628,9 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
       optres_ma <- optres_ma[, colnames(optres_ma) == paste("set", OnlyID_v, sep = ""), drop = FALSE]
 
     }else{
-      stop("f.writeOptdetails2xlsx: Requested IDs do not exist")
+      print(paste0("NLopt solver status: ", -23))
+      print("NLopt solver status message: f.writeOptdetails2xlsx: Requested IDs do not exist")
+      stop("NLopt solver status message: f.writeOptdetails2xlsx: Requested IDs do not exist")
     }
   }
 
@@ -1685,6 +1731,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
                                             sheetName = ws_name, colIndex = c(1,2,3,4,5,6))
     },
     error = function(e){
+      print(e)
       stop(e)
     })
 
@@ -1715,16 +1762,20 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
             return(target_settings_df)
           }
           else{
-            stop("runRCOLoops: Bounds and conviction are inconsistent")
+            print("NLopt solver status message: runRCOLoops: Bounds and conviction are inconsistent")
+            stop("NLopt solver status message: runRCOLoops: Bounds and conviction are inconsistent")
           }
         }else{
-          stop("download_target_settings: target settings contains duplicated tickers")
+          print("NLopt solver status message: download_target_settings: target settings contains duplicated tickers")
+          stop("NLopt solver status message: download_target_settings: target settings contains duplicated tickers")
         }
       }else{
-        stop("download_target_settings: target settings file structure is wrong")
+        print("NLopt solver status message: download_target_settings: target settings file structure is wrong")
+        stop("NLopt solver status message: download_target_settings: target settings file structure is wrong")
       }
     }else{
-      stop("download_target_settings: File is empty")
+      print("NLopt solver status message: download_target_settings: File is empty")
+      stop("NLopt solver status message: download_target_settings: File is empty")
     }
   }
 
@@ -1744,7 +1795,8 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
       # If CovMa is not specified download the latest one
       CovID <- get_default_CovMaID(Portfolioname = portfolio)
       if(is.na(CovID)){
-        stop("get_cov_ma: There are no default covariance matrxi for ", portfolio)
+        print("NLopt solver status message: get_cov_ma: There are no default covariance matrxi for ", portfolio)
+        stop("NLopt solver status message: get_cov_ma: There are no default covariance matrxi for ", portfolio)
       }else{
         # Nothing it is ok
       }
@@ -1793,6 +1845,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     cov_run_id_v[def_cov_run_id_ind] <- get_default_CovMaID(Portfolioname = Portfolio)
 
     if(any(is.na(cov_run_id_v[def_cov_run_id_ind]))){
+      print("runRCOLoops: There are no default covariance matrxi for ", Portfolio)
       stop("runRCOLoops: There are no default covariance matrxi for ", Portfolio)
     }else{
       # Nothing it is ok
@@ -2077,6 +2130,7 @@ compareRCOruns <- function(RCOres_l,
       ggplot2::labs(x = xaxis, y = yaxis)
 
   }else{
+    print("compareRCOruns: xaxis, yaxis or group_by values is(are) not valid")
     stop("compareRCOruns: xaxis, yaxis or group_by values is(are) not valid")
   }
 }
@@ -2133,7 +2187,8 @@ plotSingleSetIDfromRCOres <- function(setid, RCOres_l, plot_type)
                 rb_v = targ_input_df$RiskBudget,
                 single_set_df = single_set_df,
                 tickers_v =  rownames(targ_input_df),
-                targ_fun_val = targ_fun_val)
+                targ_fun_val = targ_fun_val,
+                plot_type = plot_type)
 }
 
 #short tickers for printing in plots
@@ -2161,6 +2216,7 @@ checkRCOplots <- function(rw_v,
 
       return(v[convictions_v != 0])
     }else{
+      print("get_active_sec: input has wrong type")
       stop("get_active_sec: input has wrong type")
     }
   }
@@ -2197,6 +2253,9 @@ checkRCOplots <- function(rw_v,
 
   all <- c(rb_act_v, rc_act_v)
   range <- c(min(all), max(all))
+  # Add 10% to let text be inside a plot
+  range <- range * 1.1
+
   txtsize <- ifelse(length(rc_act_v) > 40, 0.8, 1)
 
   if(any(is.na(rw_v))){
@@ -2213,17 +2272,24 @@ checkRCOplots <- function(rw_v,
                                                tickers_act_v,
                                                txtsize,
                                                lb_act_v,
-                                               ub_act_v){
+                                               ub_act_v,
+                                               convictions_act_v){
 
         title_part1 <- paste0("Settings set ",single_set_df$setID,": ")
         # calculate active weights share
-        active_share <- 0.5 * sum(abs(rw_act_v))
-        title_part2 <- paste("active weights (",paste("active share: ",100*round(active_share,2),"%)"))
+        total_ind_dev <- sum(abs(rw_act_v))
+        title_part2 <- paste0("Sum of deviations from BM is ", 100*round(total_ind_dev,2)," %")
 
         # Check if a constraint is active
-        const_hit_lb <- round(lb_act_v,3) == round(rw_act_v,3)
-        const_hit_ub <- round(ub_act_v,3) == round(rw_act_v,3)
-        const_hit <- const_hit_lb + const_hit_ub
+        boundary_hit_lb <- round(lb_act_v,3) == round(rw_act_v,3)
+        boundary_hit_ub <- round(ub_act_v,3) == round(rw_act_v,3)
+
+        # If lower or uppder bound is achieved set flag = TRUE
+        boundary_hit <- boundary_hit_lb | boundary_hit_ub
+
+        # create range for scales
+        range <- c(min(rw_act_v),max(rw_act_v))
+        range <- range * 1.3
 
         # Bar Plot: Share of active weights
         bp.rw <- graphics::barplot(rw_act_v,
@@ -2232,27 +2298,39 @@ checkRCOplots <- function(rw_v,
                                    las = 2,
                                    cex.names = txtsize,
                                    main = paste0(title_part1, title_part2),
-                                   col = 1 + const_hit)
+                                   col = ifelse(boundary_hit == TRUE, "red", "black"),
+                                   xlab = "Tickers",
+                                   ylab = "Relative Weights",
+                                   ylim = range)
 
         # Show also lower and upper bounds
-        graphics::points(x = bp.rw, y = lb_act_v, pch = 3)
-        graphics::points(x = bp.rw, y = ub_act_v, pch = 3)
+        graphics::points(x = bp.rw, y = lb_act_v, pch = 20, col = "blue")
+        graphics::points(x = bp.rw, y = ub_act_v, pch = 20, col = "blue")
+
+        # Add convictions: to make sure the direction and the amplitude is feasible
+        shift <- 0.0015 * sign(rw_act_v)
+        graphics::text(x = bp.rw,
+                       y = shift + rw_act_v,
+                       labels = round(convictions_act_v,0),
+                       cex = txtsize,
+                       col = "green")
 
         # legend: bar plot share of active weights
-        graphics::legend("bottomright",
-                         c("", "restricted"),
-                         col = c(1, 2),
-                         pch = 7,
+        graphics::legend("bottomleft",
+                         c("unrestricted", "restricted", "boundary", "convictions"),
+                         col = c("black", "red", "blue", "green"),
+                         pch = c(15,15,20,17),
                          bty = "n",
                          cex = 1)
 
       }
 
-      plot_active_relative_weights(rw_act_v,
-                                   tickers_act_v,
-                                   txtsize,
-                                   lb_act_v,
-                                   ub_act_v)
+      plot_active_relative_weights(rw_act_v = rw_act_v,
+                                   tickers_act_v = tickers_act_v,
+                                   txtsize = txtsize,
+                                   lb_act_v = lb_act_v,
+                                   ub_act_v = ub_act_v,
+                                   convictions_act_v = convictions_act_v)
 
 
     }
@@ -2260,8 +2338,8 @@ checkRCOplots <- function(rw_v,
 
       plot_risk_budget_utilization <- function(rb_act_v,
                                                rc_act_v,
-                                               convictions_act_v,
-                                               range){
+                                               range,
+                                               convictions_act_v){
 
         title_part1 <- paste0("Settings set ",single_set_df$setID,": ")
         title_part2 <- paste("risk budget use (size prop to weight)")
@@ -2310,13 +2388,16 @@ checkRCOplots <- function(rw_v,
     else if(plot_type == "risk_contr"){
 
       plot_risk_contributions <- function(rc_act_v,
+                                          rb_act_v,
                                           range,
                                           tickers_act_v,
-                                          convictions_act_v,
                                           txtsize){
 
         title_part1 <- paste0("Settings set ",single_set_df$setID,": ")
         title_part2 <- paste("risk contribution")
+
+        # Check if risk budget is violated
+        rb_hits <- abs(round(rc_act_v,3)) >= abs(round(rb_act_v,3))
 
         # Risk Contributions Bar plot
         x <- graphics::barplot(rc_act_v,
@@ -2324,32 +2405,49 @@ checkRCOplots <- function(rw_v,
                                beside = TRUE,
                                names.arg = .pT(tickers_act_v),
                                las = 2,
+                               col = ifelse(rb_hits == TRUE, "red", "black"),
                                cex.names = txtsize,
                                main = paste0(title_part1, title_part2))
 
-        # TODO check convitions???
-        graphics::text(x, 0.0025 + rc_act_v, labels = round(convictions_act_v, 0), cex = txtsize)
+        # Add risk budget targets
+        graphics::points(x = x, y = rb_act_v, pch = 20, col = "blue")
 
-        sumLong <- paste("LongConvictions:",round(sum(convictions_act_v[convictions_act_v > 0]),1))
-        sumShort <- paste("ShortConvictions:",round(sum(convictions_act_v[convictions_act_v < 0]),1))
-        ixConviction <- paste("IndexConviction:",round(convictions_act_v[1],1))
+        # Add utilization percentage
+        rb_utilization <- round(((rc_act_v / rb_act_v) * 100), 0)
+        rb_utilization <- paste0(rb_utilization,"%")
+        shift <- 0.0025 * sign(rc_act_v)
+        graphics::text(x, shift + rc_act_v, labels = rb_utilization, cex = txtsize)
 
-        # Add legend to Risk Contrib bar plot
-        graphics::legend("topleft",
-                         c("conviction",
-                           sumLong,
-                           sumShort,
-                           ixConviction),
-                         text.font = c(1, 2, 2, 2),
-                         box.lty = 0,
-                         bg = "transparent")
+        # graphics::text(x, 0.0025 + rc_act_v, labels = round(convictions_act_v, 0), cex = txtsize)
+        #
+        # sumLong <- paste("LongConvictions:",round(sum(convictions_act_v[convictions_act_v > 0]),1))
+        # sumShort <- paste("ShortConvictions:",round(sum(convictions_act_v[convictions_act_v < 0]),1))
+        # ixConviction <- paste("IndexConviction:",round(convictions_act_v[1],1))
+
+        # legend: bar plot share of active weights
+        graphics::legend("bottomleft",
+                         c("unrestricted", "restricted", "target"),
+                         col = c("black", "red", "blue"),
+                         pch = c(15,15,20),
+                         bty = "n",
+                         cex = 1)
+
+        # # Add legend to Risk Contrib bar plot
+        # graphics::legend("topleft",
+        #                  c("conviction",
+        #                    sumLong,
+        #                    sumShort,
+        #                    ixConviction),
+        #                  text.font = c(1, 2, 2, 2),
+        #                  box.lty = 0,
+        #                  bg = "transparent")
 
       }
 
       plot_risk_contributions(rc_act_v,
+                              rb_act_v,
                               range,
                               tickers_act_v,
-                              convictions_act_v,
                               txtsize)
 
 

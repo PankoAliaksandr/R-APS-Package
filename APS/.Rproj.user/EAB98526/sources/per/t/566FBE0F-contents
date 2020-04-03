@@ -87,6 +87,8 @@ body <- dashboardBody(tabItems(
                    width = 8,
                    tabPanel(title = "Weights", plotOutput("weights")),
                    tabPanel(title = "RC", plotOutput("rc")),
+                   tabPanel(title = "RB Util", plotOutput("rb_util")),
+                   tabPanel(title = "Weights", plotOutput("side_constr")),
                    tabPanel(title = "Comparison",
                             plotOutput("comparison", click = "comparison_plot_click" ))
           )),
@@ -161,7 +163,7 @@ server <- function(input, output) {
   output$comparison <- renderPlot({
 
     # The output is a plot
-    compareRCOruns(RCOres_l = RCOres_l,
+    APS::compareRCOruns(RCOres_l = RCOres_l,
                    yaxis = input$ycol,
                    xaxis = input$xcol,
                    group_by = input$colby,
@@ -171,12 +173,41 @@ server <- function(input, output) {
 
   output$weights <- renderPlot({
 
-    plotSingleSetIDfromRCOres(setid = input$setid,
+    APS::plotSingleSetIDfromRCOres(setid = input$setid,
                               RCOres_l = RCOres_l,
                               plot_type = "act_rel_weights")
 
 
   })
+
+  output$rc <- renderPlot({
+
+    APS::plotSingleSetIDfromRCOres(setid = input$setid,
+                                   RCOres_l = RCOres_l,
+                                   plot_type = "rb_util")
+  })
+
+  output$rc <- renderPlot({
+
+    APS::plotSingleSetIDfromRCOres(setid = input$setid,
+                                   RCOres_l = RCOres_l,
+                                   plot_type = "risk_contr")
+  })
+
+  output$rb_util <- renderPlot({
+
+    APS::plotSingleSetIDfromRCOres(setid = input$setid,
+                                   RCOres_l = RCOres_l,
+                                   plot_type = "rb_util")
+  })
+
+  output$side_constr <- renderPlot({
+
+    APS::plotSingleSetIDfromRCOres(setid = input$setid,
+                                   RCOres_l = RCOres_l,
+                                   plot_type = "side_constr")
+  })
+
 
   # Event Click: Show details for a chosen optimization settings point
   observeEvent(eventExpr = input$plot1_click, handlerExpr =
@@ -192,7 +223,7 @@ server <- function(input, output) {
     click <- input$comparison_plot_click
     click <- c(click$x,click$y)
 
-    opt_set_and_details_df$dist <- mydistfun(test = x_y_df, benchmark = click)
+    opt_set_and_details_df$dist <- APS::mydistfun(test = x_y_df, benchmark = click)
     clickselected_setID <- opt_set_and_details_df[which.min(opt_set_and_details_df$dist),"setID"]
 
 
