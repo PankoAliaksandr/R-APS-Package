@@ -1,0 +1,20 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1585900933959.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "4234167575",
+    "id" : "566FBE0F",
+    "lastKnownWriteTime" : 1585899301,
+    "last_content_update" : 1585899301,
+    "path" : "C:/Projects/APS/OptimizationAnalytics/app.R",
+    "project_path" : null,
+    "properties" : {
+    },
+    "relative_order" : 6,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

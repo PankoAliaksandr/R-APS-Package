@@ -4,16 +4,16 @@
     "created" : 1585748905227.000,
     "dirty" : false,
     "encoding" : "UTF-8",
-    "folds" : "",
-    "hash" : "0",
+    "folds" : "2083|1|2134|0|\n2193|49|2201|4|\n2220|52|2244|4|\n2250|49|2278|4|\n2285|55|2312|4|\n2319|52|2336|4|\n",
+    "hash" : "1066662536",
     "id" : "2453E71E",
-    "lastKnownWriteTime" : 1585748970,
-    "last_content_update" : 1585748970550,
+    "lastKnownWriteTime" : 1585841326,
+    "last_content_update" : 1585841326515,
     "path" : "G:/FAP/Equities/Betsizing/Code/RCOTest.R",
     "project_path" : null,
     "properties" : {
-        "cursorPosition" : "2392,25",
-        "scrollLine" : "2370"
+        "cursorPosition" : "2155,49",
+        "scrollLine" : "2083"
     },
     "relative_order" : 10,
     "source_on_save" : false,

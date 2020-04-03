@@ -10,8 +10,8 @@
                     single_set_df,
                     tickers_v,
                     targ_fun_val,
-                    ShortIndexWithOptimCash = 0,
-                    plot_type)}
+                    ShortIndexWithOptimCash = 0),
+                    plot_type}
 \description{plots optimization results}
 \arguments{
   \item{rw_v}{optimal relative weights}

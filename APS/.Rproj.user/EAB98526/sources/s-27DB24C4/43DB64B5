@@ -4,16 +4,16 @@
     "created" : 1584460304403.000,
     "dirty" : false,
     "encoding" : "UTF-8",
-    "folds" : "2208|52|2232|4|\n2238|49|2266|4|\n2273|55|2300|4|\n2307|52|2324|4|\n",
+    "folds" : "2157|47|2165|2|\n",
     "hash" : "0",
     "id" : "43DB64B5",
-    "lastKnownWriteTime" : 1585748405,
-    "last_content_update" : 1585748405641,
+    "lastKnownWriteTime" : 1585898964,
+    "last_content_update" : 1585899988484,
     "path" : "C:/Projects/Rpackage/APS/R/APS_functions.R",
     "project_path" : "R/APS_functions.R",
     "properties" : {
-        "cursorPosition" : "2371,4",
-        "scrollLine" : "2367"
+        "cursorPosition" : "2397,16",
+        "scrollLine" : "2385"
     },
     "relative_order" : 1,
     "source_on_save" : false,

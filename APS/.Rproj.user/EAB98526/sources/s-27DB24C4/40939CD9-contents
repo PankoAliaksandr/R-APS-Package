@@ -12,7 +12,7 @@
                           CovReturns,
                           ShortIndexWithOptimCash,
                           InputParameters,
-                          cov_run_id_v,
+                          cov_run_id,
                           xtol_rel,
                           IndexFlex,
                           Ix_eq_Cash,
@@ -32,7 +32,7 @@
   \item{CovReturns}{Which type of returns to use for covarniance matrix calculation. c("abs","rel") are supported}
   \item{ShortIndexWithOptimCash}{set 0 or 1 to implement the optimized Cash position by shorting the ind   ex via selling proportional weights in each index-member}
   \item{InputParameters}{Character string or a character vector with excel workseet name(s). Each worksheet contains target table input parameters for optimization.}
-  \item{cov_run_id_v}{Covariance matrix IDs vector to use in optimization. NA value is used for the newest cov. matrix available for the chosen portfolio}
+  \item{cov_run_id}{Covariance matrix ID to use in optimization. NA value is used for the newest cov. matrix available for the chosen portfolio}
   \item{xtol_rel}{tolerance for optimized weights}
   \item{IndexFlex}{Is index flexible (futures)}
   \item{Ix_eq_Cash}{todo}

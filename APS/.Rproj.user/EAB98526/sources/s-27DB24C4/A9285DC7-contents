@@ -1,4 +1,42 @@
-RCO_res_l <- APS::runRCOLoops(Portfolio = "RE_EU",TargetTE =  10^-7, Specif_COV = "297")
-APS::compareRCOruns(RCOres_l = RCO_res_l,yaxis="total_rb_dev",xaxis="setID",group_by="TargetTE",pointat=1)
-APS::plotSingleSetIDfromRCOres(setid = 1,RCOres_l = RCO_res_l)
+RCO_res_l <- APS::runRCOLoops(Portfolio="RE_EU"  #needed to find the right covariance!
+                              ,TargetTE = seq(0.007,0.013,0.001)
+                              ,Trials=c(100000)
+                              ,InputParameters="Signals4R"
+                              ,CovReturns=c("abs")
+                              ,cov_run_id=c(310,311,312) #c(297) #c(NA) #c(195)
+                              ,IndexFlex=FALSE #c(TRUE, FALSE)
+                              ,Ix_eq_Cash= FALSE #c(TRUE, FALSE)
+                              ,CashTolerance = 0.05 #seq(0,0.1,0.05)#seq(from=0.00,to=0.01,by=0.002), boundary for -sum(w)
+                              ,LeverageTolerance= 0.05 #seq(0,0.005,0.001)#0.025#seq(0,0.05,0.005)  #boundary for sum(w)
+                              ,algo = c("NLOPT_LD_SLSQP")# "NLOPT_LN_AUGLAG_EQ")#,"NLOPT_GN_ISRES") #"NLOPT_LD_SLSQP",  "NLOPT_LD_AUGLAG_EQ","NLOPT_LN_AUGLAG_EQ",NLOPT_LD_SLSQP","NLOPT_GN_ISRES"  #suboptimal result but optimal with X0=sol: NLOPT_LD_SLSQP,NLOPT_LD_LBFGS,NLOPT_LD_MMA(fails),
+                              # suboptimal result even with X0=Sol: NLOPT_LD_AUGLAG
+                              # error message nlopt_add_inequality_mconstraints returned NLOPT_INVALID_ARG: NLOPT_GD_STOGO,NLOPT_LD_AUGLAG, NLOPT_LD_TNEWTON,NLOPT_LD_TNEWTON_PRECOND
+                              ,NetInvLambda= 100# c(0,100,250,500)#10^seq(1,4,0.5)
+                              ,LowConvictionExitInDays = 100 # c(1,5,10,15,30)
+                              ,ConvictionGroups = 1 #c(1,2,5)
+)
+APS::compareRCOruns(RCOres_l = RCOres_l,yaxis="total_rb_dev",xaxis="setID",group_by="TargetTE",pointat=1)
+plotSingleSetIDfromRCOres(setid = 1,RCOres_l = RCOres_l)
+
+
+
+set.seed(20160228)
+#outer margins can also be used for plotting legend in them
+x<-runif(10)
+y<-runif(10)
+cols<-rep(c("red","green","orange","yellow","black"),each=2)
+
+par(op)
+par(oma=c(2,2,0,4),mar=c(3,3,2,0),mfrow=c(2,2),pch=16)
+
+for(i in 1:4){
+  plot(x,y,col=cols,ylab="",xlab="")
+  legend(x = "topleft",legend=LETTERS[1:5],col=unique(cols),pch=16,bty="n",xpd=NA)
+  
+}
+
+mtext(text="A common x-axis label",side=1,line=0,outer=TRUE)
+mtext(text="A common y-axis label",side=2,line=0,outer=TRUE)
+
+legend(x = "topright", inset=c(-0.2,0),legend=LETTERS[1:5],col=unique(cols),pch=16,bty="n",xpd=NA)
 
