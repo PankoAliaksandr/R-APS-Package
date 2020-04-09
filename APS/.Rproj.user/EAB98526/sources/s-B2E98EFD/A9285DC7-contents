@@ -19,6 +19,6 @@ APS::compareRCOruns(RCOres_l = RCOres_l,yaxis="total_rb_dev",xaxis="setID",group
 plotSingleSetIDfromRCOres(setid = 1,RCOres_l = RCOres_l)
 
 
-set_df <- RCOres_l$settings_df[1, , drop = FALSE]
+set_df <- RCO_res_l$settings_df[1, , drop = FALSE]
 inSQLas <- APS::writeRCOsettingsToSQL(set_df)
 

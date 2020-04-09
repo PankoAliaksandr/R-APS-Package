@@ -2071,7 +2071,8 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
                    details_ma = optim_details_ma,
                    rw_ma = opt_rel_weights_ma,
                    targ_3D_array = targ_3D_array,
-                   cov_3D_array = cov_3D_array)
+                   cov_3D_array = cov_3D_array,
+                   RiskContribution = RCOthisLoop$RiskContribution)
 
   f.writeOptdetails2xlsx(RCOres_l = RCOres_l,
                          Portfolio,
@@ -2497,85 +2498,83 @@ writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
   if(class(single_setings_set_df) == "data.frame"){
     if(nrow(single_setings_set_df) == 1){
 
-      # define temporary table name
-      temptable <- "betsizing.CalculationRCOCurrentSettingSetUnsaved"
+      # define constants: temporary table name and SP name
+      temp_table_name <- "betsizing.CalculationRCOCurrentSettingSetUnsaved"
+      stored_procedure_name <- "betsizing.uspCalculationRCO_LookupOrAddNewSettingSet"
 
-      con <- FAFunc.GetDB()
       # Delete a table if exists
-      try(RODBC::sqlDrop(channel = con, sqtable =  temptable, errors = FALSE), silent = TRUE)
+      con <- FAFunc.GetDB()
+      try(RODBC::sqlDrop(channel = con, sqtable =  temp_table_name, errors = FALSE), silent = TRUE)
+      RODBC::odbcClose(con)
 
-      columnTypes <- list(FK_ParameterName = "NVARCHAR(50)",
-                          ParameterValue = "NVARCHAR(255)")
+      if(verbose == TRUE){
+        print(paste0("temporary GlobalSettings table: ", temp_table_name, " has been cleared."))
+      }else{
+        # Nothing
+      }
 
-      #fill in chosen settings
+      # Start to prepare upload data frame
       param_names_v <- colnames(single_setings_set_df)
-      # TODO add validation here
+
       # single_setings_set_df must contain the only one row
       param_values_v <- as.character(single_setings_set_df[1,])
       insert_df <- data.frame(FK_ParameterName = param_names_v,
                               ParameterValue = param_values_v)
 
-      s <- RODBC::sqlSave(channel = con,
-                          dat = insert_df,
-                          tablename = temptable,
-                          varTypes = columnTypes)
+      # some values are generated inside the RCO Loops. They shouldn't be saved in DB
+      exclude_v <- c("LbMax","InputParameters","Specif_COV",
+                     "setID","SoftLeverageConstrained","CovCalcWay",
+                     "CovReturns","CovID", "setID")
+
+      insert_df <- insert_df[!insert_df$FK_ParameterName %in% exclude_v, ,drop = FALSE]
+
+      columnTypes <- list(FK_ParameterName = "NVARCHAR(50)",
+                          ParameterValue = "NVARCHAR(255)")
+
+      con <- FAFunc.GetDB()
+      saved <- RODBC::sqlSave(channel = con,
+                              dat = insert_df,
+                              tablename = temp_table_name,
+                              varTypes = columnTypes,
+                              rownames = FALSE)
 
       RODBC::odbcClose(con)
 
+      if(saved == 1){
+        if(verbose == TRUE){
+          paste0("successfully inserted in SQL-Temporary-Table ", temp_table_name)
+        }else{
+          # Nothing
+        }
 
-      # insert whole settingsSET in tempTable (to check in sql if settings are new!)
-      # delete existing table
+        # Execute stored procedure to save settings set in DB if required (if new)
+        run_sp_query <- paste0("exec ", stored_procedure_name)
+        con <- FAFunc.GetDB()
+        query_res_df <-  RODBC::sqlQuery(con, run_sp_query)
+        RODBC::odbcClose(con)
 
-      # dummydf <- data.frame(ParameterValue="dummyv")
-      # rownames(dummydf) <- "TargetTE"
-      # sqlSave(con, dummydf,temptable,append=TRUE , rownames="FK_ParameterName")
-      # selstr = paste("Delete FROM " , temptable,sep="")
-      # RODBC::sqlQuery(con, selstr)
+        if(class(query_res_df) == "data.frame"){
+          if(nrow(query_res_df) > 0){
+            if(verbose == TRUE){
+              print(paste("successfully inserted new OR linked used Global settings with existing GLobalSettingSetID: ",query_res_df))
+            }else{
+              # Nothing
+            }
 
-      # if(verbose == TRUE){
-      #   print(paste("cleared temporary GlobalSettings table:", temptable))
-      # }
-      #
-      # df.s <- data.frame(t(single_setings_set_df))
-      # colnames(df.s) <- "ParameterValue"
-      # df.s  <- df.s[!(row.names(df.s) %in% c("LbMax","InputParameters","Specif_COV","setID","SoftLeverageConstrained","CovCalcWay","CovReturns","CovID")),,drop=FALSE]
-      #
-      # saved <- sqlSave(channel = con,
-      #                  dat = df.s,
-      #                  tablename = temptable,
-      #                  append = TRUE,
-      #                  rownames="FK_ParameterName")
-      #
-      # if(saved == 1){
-      #   if(verbose == TRUE){
-      #     print("successfully inserted the used GlobalSettings in SQL-Temporary-Table")
-      #   }else{
-      #     # Nothing
-      #   }
-      #
-      #   # exec sql procedure to give back correspondent GlobalSettingSetID (and create a new one if required)
-      #   execstr <- "exec betsizing.uspCalculationRCO_LookupOrAddNewSettingSet"
-      #   query_res_df <-  RODBC::sqlQuery(con, execstr)
-      #
-      #   if(class(query_res_df) == "data.frame"){
-      #     if(nrow(query_res_df) > 0){
-      #       if(verbose == TRUE){
-      #         print(paste("successfully inserted new OR linked used Global settings with existing GLobalSettingSetID: ",query_res_df))
-      #       }else{
-      #         # Nothing
-      #       }
-      #       return(query_res_df)
-      #     }else{
-      #       stop("writeRCOsettingsToSQL:exec betsizing.uspCalculationRCO_LookupOrAddNewSettingSet  gave no results")
-      #     }
-      #   }else{
-      #     stop("writeRCOsettingsToSQL:SQL query failed")
-      #   }
-      # }else{
-      #   print("writeRCOsettingsToSQL: Error during the save orruced")
-      #   stop("writeRCOsettingsToSQL: Error during the save orruced")
-      # }
+            return(query_res_df)
 
+          }else{
+            print("writeRCOsettingsToSQL:exec betsizing.uspCalculationRCO_LookupOrAddNewSettingSet  gave no results")
+            stop("writeRCOsettingsToSQL:exec betsizing.uspCalculationRCO_LookupOrAddNewSettingSet  gave no results")
+          }
+        }else{
+          print("writeRCOsettingsToSQL:SQL query failed")
+          stop("writeRCOsettingsToSQL:SQL query failed")
+        }
+      }else{
+        print("writeRCOsettingsToSQL: Error during the save orruced")
+        stop("writeRCOsettingsToSQL: Error during the save orruced")
+      }
     }else{
       print("writeRCOsettingsToSQL:input data.frame must have only 1 row")
       stop("writeRCOsettingsToSQL:input data.frame must have only 1 row")
@@ -2584,5 +2583,4 @@ writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
     print("writeRCOsettingsToSQL:input is not a data.frame")
     stop("writeRCOsettingsToSQL:input is not a data.frame")
   }
-
 }
