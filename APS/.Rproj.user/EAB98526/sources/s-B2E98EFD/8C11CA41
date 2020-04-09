@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1586438642722.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "8C11CA41",
+    "lastKnownWriteTime" : 1586438744,
+    "last_content_update" : 1586438744717,
+    "path" : "C:/Projects/Rpackage/APS/man/writeRCOsettingsToSQL.Rd",
+    "project_path" : "man/writeRCOsettingsToSQL.Rd",
+    "properties" : {
+        "cursorPosition" : "7,50",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 10,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_doc"
+}

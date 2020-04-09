@@ -5,7 +5,7 @@
                        xaxis,
                        yaxis,
                        group_by,
-                       pointat)}
+                       current_point)}
 \description{RCOres_l contains optimization results for different settings
 this function compares the results to find out how robust is the optimization}
 \arguments{
@@ -13,6 +13,6 @@ this function compares the results to find out how robust is the optimization}
   \item{xaxis}{data set for x axis}
   \item{yaxis}{data set for x axis}
   \item{group_by}{How to apply color, by which data set}
-  \item{pointat}{which point should be bigger than the others}
+  \item{current_point}{User can pick a point to display the optimization details. This point is bigger.}
 }
 %\examples{isDate(mydate, format = "\%Y-\%m-\%d")}

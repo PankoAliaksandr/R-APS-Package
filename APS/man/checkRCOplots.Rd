@@ -3,26 +3,20 @@
 \title{checkRCOplots}
 \usage{checkRCOplots(rw_v,
                     cov_df,
-                    convictions_v,
-                    lb_v,
-                    ub_v,
-                    rb_v,
+                    targ_input_df,
                     single_set_df,
-                    tickers_v,
-                    targ_fun_val,
+                    single_opt_det_v,
+                    risk_contributions_v,
                     ShortIndexWithOptimCash = 0,
                     plot_type)}
 \description{plots optimization results}
 \arguments{
   \item{rw_v}{optimal relative weights}
   \item{cov_df}{covariance data frame}
-  \item{convictions_v}{convictions}
-  \item{lb_v}{lower bound}
-  \item{ub_v}{upper bound}
-  \item{rb_v}{How much cash is allowed. Boundary for the Cash held (conditon is: -sum(w)>CashTolerance)}
+  \item{targ_input_df}{settings data frame row}
   \item{single_set_df}{settings data frame row}
-  \item{tickers_v}{stock names}
-  \item{targ_fun_val}{target function value}
+  \item{single_opt_det_v}{optimization details vector}
+  \item{risk_contributions_v}{risk contributions}
   \item{ShortIndexWithOptimCash}{set 0 or 1 to implement the optimized Cash position by shorting the ind   ex via selling proportional weights in each index-member}
   \item{plot_type}{type of plot}
 }
