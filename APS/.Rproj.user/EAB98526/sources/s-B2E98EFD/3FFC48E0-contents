@@ -1,0 +1,96 @@
+# Description
+#   This file is a wrapper to call RCO optimizer
+#   This script is called from C# using background worker
+
+# Parameters
+#   C# calls the script with the next parameters (type is character string):
+#   1. Analyst Portfolio Name (Ex. "APSFBEQCHL")
+#   2. Caclulation Date (Ex. "2020-02-14")
+#   3. Covariance Matrix ID (Ex. "297")
+#   4. RCO optimization settings ID (Ex. "37")
+#   5. (Still discussed) is Analyst Portfolio real or virtual (Ex. "0" or "1")
+
+# Dependencies (required libraries)
+#   1. require("RODBC")
+#   2. library(nloptr)
+#   3. require("reshape")
+#   4. library(dplyr)
+
+# How to test from here
+#   0. Check dependencies (libraries)
+#   1. After line "call_params = commandArgs(trailingOnly = TRUE)" in the beginning paste:
+    # call_params[1] = "APSFBEQCHSM"
+    # call_params[2] = "2020-03-31"
+    # call_params[3] = "313"
+    # call_params[4] = "42"
+    # call_params[5] = 0
+    #
+#   2. Run this script
+
+# Algorithm:
+  # 1) Based on Portfolio Name and Date prepare a "target table"
+  # 2) Based on RCOSetID get RCO_settings
+  # 3) Based on CovMaSetID get CovMa (the whole matrix)
+  # 4) Execute runRCO() call and get the optimal weights.
+  # 5) Save the result in DB
+
+
+# TODO
+#   1) Tradeability issue: for AP doesn't matter for Real matters
+#   2) Real Portfolios: not clear if used.
+#   3) Create R package and put all functions inside
+
+
+# Assumptions:
+#   1. RCOSetID and CovMaSetID are considered to be correctly filled here.
+#      This part is done id C# and account for default setting as well as direct user input
+
+timestamp()
+
+source("G:/FAP/Equities/Betsizing/Code/RCOTest.R")
+
+call_params = commandArgs(trailingOnly = TRUE)
+
+print(paste0("portfolioName = ", call_params[1]))
+print(paste0("calculation_date = ", call_params[2]))
+print(paste0("covMaSetID = ", call_params[3]))
+print(paste0("RCOSetID = ", call_params[4]))
+
+# Check that the packages have not been deleted...
+if("RODBC" %in% rownames(installed.packages()) == FALSE){
+  print(paste0("NLopt solver status: ", -10))
+  print(paste0("NLopt solver status message: Some packages are missing"))
+
+}else{
+  # Nothing it is ok
+}
+
+if(length(call_params) > 0){
+
+  date <- call_params[2]
+
+  if(isDate(date) == TRUE){
+    date <- as.Date(date)
+  }else{
+    print("parameter date is in wrong format")
+    stop("parameter date is in wrong format")
+  }
+
+  calc_method <- "nlshrink"
+  print(paste("For the Covariance Matrix is the CalcMethod '",calc_method,"' used",sep=""))
+
+  # Run main function with required params
+  runRCOFromAPS(portfolioName = call_params[1],
+                calculation_date = date,
+                covMaSetID = call_params[3],
+                RCOSetID = call_params[4],
+                isReal = FALSE,
+                calc_method = calc_method)
+
+}else{
+  # length(call_params) <= 0
+  print("No arguments provided")
+  stop("No arguments provided")
+}
+timestamp()
+

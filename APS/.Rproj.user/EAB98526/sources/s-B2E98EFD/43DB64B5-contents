@@ -151,7 +151,6 @@ getRCOSetSettings <- function(RCOSetID, connection){
 
         colnames(RCO_settings_df) <- result_df$FK_ParameterName
 
-
         return(RCO_settings_df)
       }
       else{
@@ -798,10 +797,13 @@ f.getWeightRange <- function(lb,
 ImplIndexPosition <- function(w, w_bm, ZeroNetInvestment = FALSE){
   # Dependencies: NO
 
-  stopifnot(length(w)-1 == length(w_bm)) #w includes index position, w_bm only the index constituents!
+  # w includes index position, w_bm only the index constituents!
+  stopifnot(length(w)-1 == length(w_bm))
   #check bm-weights sum to 1
-  if(round(sum(w_bm),3)!= 1) #plausibility check: lb show benchmark-weight?
-  {message(paste("the lower bounds provided do not sum to 1, but to:",sum(w_bm)," - correct BM-weights needed to make a fully correct index replication"))
+  #plausibility check: lb show benchmark-weight?
+  if(round(sum(w_bm), 3) != 1)
+  {
+    message(paste("the lower bounds provided do not sum to 1, but to:",sum(w_bm)," - correct BM-weights needed to make a fully correct index replication"))
     print("the w_bm are normalized that their sum adds to 1 - might lead to problems in implementation, leads to only indicative target weights")
     w_bm <- w_bm/sum(w_bm)
   }
@@ -923,7 +925,7 @@ OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target){
   rc <- get_rcb(weight_v = rw, cov=cov)
 
   # Total deviation from target risk budget: sum of rc actual - target
-  total_rb_dev <- sum(abs(rc-rb_target))
+  TotalRBDev <- sum(abs(rc-rb_target))
 
 
   #portfolio beta
@@ -937,7 +939,7 @@ OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target){
               const_hit_pct = const_hit_pct,
               p.beta = p.beta,
               rc = rc,
-              total_rb_dev = total_rb_dev))
+              TotalRBDev = TotalRBDev))
 
   #example (needs an existing result in RCOres-form)
   # rw <- RCOres$RW[,1] ; cov <- RCOres$COV[,,1]; lb <- RCOres$targ_3D_array[,"lb",1]; ub <- RCOres$targ_3D_array[,"ub",1]; rb_target <- RCOres$targ_3D_array[,"RiskBudget",1]
@@ -1272,30 +1274,39 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
                                                 rb_target = targ$RiskBudget) #rw=rw;COV=COV;lb=targ$lb.;ub=targ$ub;set=set
       rc <- orc$rc
 
-      # store results in optim_details
-      optim_details <- c(Calculated = as.character(Sys.time()),
-                         orc$te - set$TargetTE,
-                         orc$const_hit_pct,
-                         orc$NetInvestment,
-                         orc$p.beta,
-                         orc$IndexPosition,
-                         opt_output$objective,
-                         iterations,
-                         calctime,
-                         orc$total_rb_dev,
-                         validResult = validResult)
+      # store results in data frame as row
+      # (each optimization iteration will be stored as row)
+      single_optim_details_df <- data.frame("Calculated" = as.character(Sys.time()),
+                                            "PortfTEDev" = orc$te - set$TargetTE,
+                                            "HitsPct" = orc$const_hit_pct,
+                                            "NetInvestment" = orc$NetInvestment,
+                                            "PortfBeta" = orc$p.beta,
+                                            "IndexPosition" = orc$IndexPosition,
+                                            "ObjFunValue" = opt_output$objective,
+                                            "Iterations" = iterations,
+                                            "Calctime" = calctime,
+                                            "TotalRBDev" = orc$TotalRBDev,
+                                            "ValidResult" = validResult,
+                                            row.names = NULL,
+                                            stringsAsFactors = FALSE)
 
-      #add checks on result!!!
+      # TODO introduce parameter here
       TEdeviationTolerance <- 0.0001
 
-      if(abs(orc$te - set$TargetTE) < TEdeviationTolerance)
+      if(abs(single_optim_details_df$PortfTEDev) < TEdeviationTolerance)
       {
-        cat(paste("The Risk-Contribution-Optimization was successful on attempt ",attempt-1), " and the resulting weights are:", sep="\n")
+        cat(paste("The Risk-Contribution-Optimization was successful on attempt ",attempt-1),
+            " and the resulting weights are:", sep="\n")
+
         print(data.frame(conviction = targ$conviction,
                          rw = rw,
                          RiskContr = rc))
 
-      }else{ cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",orc$te - set$TargetTE, " and the resulting weights are:", sep="\n")
+      }else{
+        cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",
+                 single_optim_details_df$PortfTEDev,
+                 " and the resulting weights are:", sep="\n")
+
         print(data.frame(conviction = targ$conviction,
                          rw = rw,
                          RiskContr = rc))
@@ -1305,7 +1316,7 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
 
   return(list(rw = rw,
               pw = pw,
-              optim_details = optim_details,
+              optim_details = single_optim_details_df,
               RiskContribution = rc))
 }
 
@@ -1401,7 +1412,7 @@ runRCOFromAPS <- function(portfolioName,
     )
 
     # check if optimization returned a valid result
-    if(isTRUE(as.logical(optimization_result_l$optim_details["validResult"]))){
+    if(optimization_result_l$optim_details$ValidResult){
       # The result is valid
       # prepare output vectors
 
@@ -1430,7 +1441,7 @@ runRCOFromAPS <- function(portfolioName,
       opt_weights_portfolio_v[stocks_with_signal_ind] <- optimization_result_l$pw
 
       # Calculation timestamp
-      calcdatetime <- optimization_result_l$optim_details["Calculated"]
+      calcdatetime <- optimization_result_l$optim_details$Calculated
 
       # Get risk contribution
       stopifnot(is.null(names(optimization_result_l$RiskContribution)) == FALSE)
@@ -1595,22 +1606,21 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
                                    OnlyID_v = NULL){
 
   stopifnot(class(RCOres_l) == "list")
-  names_RCOres_v <- c("settings_df", "details_ma", "rw_ma", "targ_3D_array", "cov_3D_array")
-  stopifnot(all(names(RCOres_l) %in% names_RCOres_v))
+  used_names_RCOres_v <- c("settings_df", "details_df", "rw_ma", "targ_3D_array")
+  stopifnot(all(used_names_RCOres_v %in% names(RCOres_l)))
   stopifnot(class(RCOres_l$settings_df) == "data.frame")
-  stopifnot(class(RCOres_l$details_ma) == "matrix")
+  stopifnot(class(RCOres_l$details_df) == "data.frame")
   stopifnot(class(RCOres_l$rw_ma) == "matrix")
   stopifnot(class(RCOres_l$targ_3D_array) == "array")
-  stopifnot(class(RCOres_l$cov_3D_array) == "array")
   stopifnot("setID" %in% colnames(RCOres_l$settings_df))
 
   settings_df <- RCOres_l$settings_df
-  optres_ma <- rbind(RCOres_l$details_ma, RCOres_l$rw_ma)
+  optres_ma <- rbind(RCOres_l$rw_ma, t(RCOres_l$details_df))
   targ_3D_array <- RCOres_l$targ_3D_array
 
   if(is.null(OnlyID_v) == FALSE)
   {
-    stopifnot(class(OnlyID_v) == "numeric")
+    stopifnot(class(OnlyID_v) == "integer")
     # Some particular settings are required
     existing_set_ind <- which(OnlyID_v %in% settings_df$setID)
 
@@ -1646,7 +1656,7 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
   if(ShortIndexWithOptimCash == 1)
   {
     l <- nrow(optres_ma)
-    ix_sec <- (l - sec_nr + 1):l
+    ix_sec <- 1:sec_nr
     w_bm <- -targ_3D_array[-1, "lb", 1]
     for (i in 1:ncol(optres_ma))
     {
@@ -1666,9 +1676,7 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
                    file = file_path_name,
                    sheetName="R.output")
 
-  #example
-  #RCOres <- RCOres; Portfolio <- "RE_EU";Calcdate="";ShortIndexWithOptimCash=0;ZeroNetInvestment=FALSE;OnlyID=FALSE
-  #f.writeOptdetails2xlsx(RCOres,Portfolio,Calcdate,ShortIndexWithOptimCash,ZeroNetInvestment,OnlyID)
+  print("Results are saved in Excel")
 }
 
 
@@ -1901,17 +1909,12 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
   # They should not be local in loop, however in R (and only in R)
   # it is not mandatory, it would still work
 
-  optim_details_names_v <- c("Calculated","TEact-TEtarg","%weight_limits_hit",
-                                "NetInvestment","PortBeta","IndexPosition",
-                                "target_function_value","iterations","calctime",
-                                "total_rb_dev","validResult")
-
   # Define variables just to show which are common for each iteration
   sec_nr <- NULL
   sec_names_v <- NULL
-  target_settings_df <- NULL
+  target_settings_df <- data.frame()
+  optim_details_df <- data.frame()
   opt_rel_weights_ma <- NULL
-  optim_details_ma <- NULL
   target_settings_ma <- NULL
   targ_3D_array <- NULL
   cov_3D_array <- NULL
@@ -1924,7 +1927,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     print(paste(Sys.time()," started loop  ",k, " of ",valid_settings_number,sep=""))
 
     # Take signle settings set
-    set_df <- valid_settings_df[k, ]
+    set_df <- valid_settings_df[k, ,drop = FALSE]
     print(set_df)
 
     current_targ_settings_set <- as.character(set_df$InputParameters)
@@ -1946,13 +1949,6 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
       rownames(opt_rel_weights_ma) <- sec_names_v
       colnames(opt_rel_weights_ma) <- paste("set", valid_settings_df$setID, sep="")
 
-      # For each loop we save optimization details in a matrix as a columns
-      optim_details_ma <- matrix(nrow = length(optim_details_names_v),
-                                 ncol = valid_settings_number)
-
-      rownames(optim_details_ma) <- optim_details_names_v
-      colnames(optim_details_ma) <- paste("set", valid_settings_df$setID, sep = "")
-
       # 3D array to store the different input tables. InputParameters can be a vector
       # note: targ_tab_name is a name in Excel worksheet for a target table to use
       targ_3D_array <- array(dim = c(dim(target_settings_df), length(InputParameters)),
@@ -1970,9 +1966,11 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
 
       # 3D array to store CovMa for each set of settings
       cov_3D_array <- array(dim = c(sec_nr, sec_nr, nrow(different_covsettings_df)),
-                   dimnames = list(cov_row_names = sec_names_v,
-                                   cov_col_names = sec_names_v,
-                                   CovsetID = rep(NA,nrow(different_covsettings_df))))
+                            dimnames = list(
+                              cov_row_names = sec_names_v,
+                              cov_col_names = sec_names_v,
+                              CovsetID = rep(NA, nrow(different_covsettings_df))
+                            ))
 
       # Get covariance matrix for the current iteration
       cov_res_list <- get_cov_ma(cov_id = set_df$cov_run_id,
@@ -2051,11 +2049,13 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     # store the results in Loop-Matrices (non-valid results indicated with NA)
     opt_rel_weights_ma[sec_active, k] <- RCOthisLoop$rw
     opt_rel_weights_ma[!sec_active, k] <- 0
-    optim_details_ma[,k] <- RCOthisLoop$optim_details
+
+    # Update optimization details data frame
+    optim_details_df <- rbind(optim_details_df, RCOthisLoop$optim_details)
 
     # intermediary save output file to not loose everything if a later loop gets interrupted
     RCOres_l <- list(settings_df = valid_settings_df,
-                     details_ma = optim_details_ma,
+                     details_df = optim_details_df,
                      rw_ma = opt_rel_weights_ma,
                      targ_3D_array = targ_3D_array,
                      cov_3D_array = cov_3D_array,
@@ -2068,7 +2068,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
 
   # OUTPUT RESULTS
   RCOres_l <- list(settings_df = valid_settings_df,
-                   details_ma = optim_details_ma,
+                   details_df = optim_details_df,
                    rw_ma = opt_rel_weights_ma,
                    targ_3D_array = targ_3D_array,
                    cov_3D_array = cov_3D_array,
@@ -2081,7 +2081,8 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
   return(RCOres_l)
 }
 
-compareRCOruns <- function(RCOres_l,
+compareRCOruns <- function(setid,
+                           RCOres_l,
                            xaxis,
                            yaxis,
                            group_by,
@@ -2098,7 +2099,7 @@ compareRCOruns <- function(RCOres_l,
 
   # Parameters:
   #   RCOres_l: a list with optimization results
-  #   xaxis = "TargetTE"; yaxis="total_rb_dev" means
+  #   xaxis = "TargetTE"; yaxis="TotalRBDev" means
   #      plot total risk budget deviation depending on Target tracking error.
   #   group_by="setID"
   #   current_point: which point should be bigger than the others,
@@ -2111,37 +2112,54 @@ compareRCOruns <- function(RCOres_l,
   stopifnot(is.null(group_by) == FALSE)
   stopifnot(class(RCOres_l) == "list")
   stopifnot(length(names(RCOres_l)) > 0)
-  required_names <- c("settings_df", "details_ma")
+  required_names <- c("settings_df", "details_df")
   stopifnot(all(required_names %in% names(RCOres_l)))
 
+  # For now only these values make sense
+  available_x_values_v <- c("setID", "TargetTE", "algo", "cov_run_id", "IndexFlex", "CashTolerance",
+                            "Ix_eq_Cash" ,"SoftNetInvConstraint", "LeverageTolerance",
+                            "NetInvLambda" , "xtol_rel")
 
-  # RCOres_l$details_ma and RCOres_l$settings_df contain optimization details and settings
+  available_y_values_v <- c("TotalRBDev", "NetInvestment", "PortfTEDev",
+                            "IndexPosition", "PortfBeta")
+
+
+  # RCOres_l$details_df and RCOres_l$settings_df contain optimization details and settings
   # for each feasible optimization settings set.
   # Unite all columns to let later group by a column
-  opt_res_df <- cbind(t(RCOres_l$details_ma), RCOres_l$settings_df)
+  opt_res_df <- cbind(RCOres_l$details_df, RCOres_l$settings_df)
 
-  available_names <- colnames(opt_res_df)
-
-  if(xaxis %in% available_names &&
-     yaxis %in% available_names &&
-     group_by %in% available_names){
+  if(xaxis %in% available_x_values_v &&
+     yaxis %in% available_y_values_v &&
+     group_by %in% available_x_values_v){
 
     # set points size
     sz <- rep(3, nrow(opt_res_df))
     sz[current_point] = 10
 
-    opt_res_df[,xaxis] <- as.factor(opt_res_df[,xaxis])
-    opt_res_df[,yaxis] <- as.factor(opt_res_df[,yaxis])
+    # Round value. Must be always numeric
+    if(class(opt_res_df[,yaxis]) == "numeric"){
+      opt_res_df[,yaxis] <- round(opt_res_df[,yaxis],3)
+    }else{
+      #  rounding is not required
+    }
+
+    if(class(opt_res_df[,xaxis]) == "numeric"){
+      opt_res_df[,xaxis] <- round(opt_res_df[,xaxis],3)
+    }else{
+      #  rounding is not required
+    }
+
+    #TODO delete me a bit later
+    # # Change Name
+    # cnames <- colnames(opt_res_df)
+    # ind <- which(cnames == yaxis)
+    # cnames[ind] <- "TEactMtarg"
+    # colnames(opt_res_df) <- cnames
+    # yaxis <- cnames[ind]
+
+    # Group by must be a factor
     opt_res_df[,group_by] <- as.factor(opt_res_df[,group_by])
-
-    if(yaxis == "TEact-TEtarg"){
-      cnames <- colnames(opt_res_df)
-      ind <- which(cnames == yaxis)
-      cnames[ind] <- "TEactMtarg"
-      colnames(opt_res_df) <- cnames
-      yaxis <- cnames[ind]
-
-    }else{}#Nothing
 
     # Plot
     ggplot2::ggplot(data = opt_res_df,
@@ -2152,8 +2170,13 @@ compareRCOruns <- function(RCOres_l,
                                         fill = group_by)) +
       ggplot2::geom_line(size = 0.5) +
       ggplot2::geom_point(size = sz, shape = pmin(sz + 18, 23)) +
-      ggplot2::theme(legend.position = "right", legend.direction = "vertical") +
-      ggplot2::labs(x = xaxis, y = yaxis)
+      ggplot2::theme(legend.position = "right",
+                     legend.direction = "vertical",
+                     plot.title = ggplot2::element_text(face = "bold",
+                                                        colour = "black",
+                                                        size = 14,
+                                                        hjust = 0.5)) +
+      ggplot2::labs(x = xaxis, y = yaxis, title = paste0("Settings ID: ", setid))
 
   }else{
     print("compareRCOruns: xaxis, yaxis or group_by values is(are) not valid")
@@ -2161,25 +2184,31 @@ compareRCOruns <- function(RCOres_l,
   }
 }
 
-# wrapper to plot call checkRCOplots from optimization output
+# wrapper to plot call draw_plot from optimization output
 plotSingleSetIDfromRCOres <- function(setid, RCOres_l, plot_type)
 {
   # input validations
   stopifnot(class(RCOres_l) == "list")
   stopifnot(length(names(RCOres_l)) > 0)
-  RCOres_l_names <- c("settings_df", "details_ma", "rw_ma", "targ_3D_array", "cov_3D_array", "RiskContribution")
+
+  RCOres_l_names <- c("settings_df",
+                      "details_df",
+                      "rw_ma",
+                      "targ_3D_array",
+                      "cov_3D_array",
+                      "RiskContribution")
+
   stopifnot(all(names(RCOres_l) %in% RCOres_l_names))
   stopifnot(length(setid) == 1)
 
-  # get info from RCOres_l (output of the RCO function)
-  # RCOres_l$setting_df: each ROW corresponds to an iteration settings
-  single_set_df <- RCOres_l$settings_df[RCOres_l$settings_df$setID == setid, , drop = FALSE]
-  # details are stored by column
-  single_opt_det_v <- RCOres_l$details_ma[,setid]
+  # Get settings and optimization details, each row corresponds to an iteration
+  single_set_df <- RCOres_l$settings_df[setid, , drop = FALSE]
+  single_opt_det_df <- RCOres_l$details_df[setid, , drop = FALSE]
   risk_contributions_v <- RCOres_l$RiskContribution
   # Get optimal relative weights for required settings set (stored in columns)
   rw_v <- RCOres_l$rw_ma[,setid]
 
+  # TODO Add CovID in earlier in the same manner as setid
   covID <- paste(single_set_df[c("CovCalcWay","CovReturns","cov_run_id")],collapse="_")
   cov_ma <- RCOres_l$cov_3D_array[,,covID]
 
@@ -2187,23 +2216,21 @@ plotSingleSetIDfromRCOres <- function(setid, RCOres_l, plot_type)
   stopifnot(all(names(rw_v) == colnames(cov_ma)) == TRUE)
 
   # get target table
-  targ_input_df <- as.data.frame(RCOres_l$targ_3D_array[,,single_set_df$InputParameters])
-
-  # Structure validation
-  names_v <- c("lb", "ub", "conviction", "tradeability", "RiskBudget")
-  stopifnot(all(names_v %in% colnames(targ_input_df)) == TRUE)
-
-  names_v <- c("MaxRelWeight", "LowConvictionExitInDays", "ConvictionGroups")
-  stopifnot(all(names_v %in% colnames(single_set_df)) == TRUE)
+  if("InputParameters" %in% colnames(single_set_df)){
+    targ_input_df <- as.data.frame(RCOres_l$targ_3D_array[,,single_set_df$InputParameters])
+  }else{
+    print("plotSingleSetIDfromRCOres: Settings DF does not contain requested column")
+    stop("plotSingleSetIDfromRCOres: Settings DF does not contain requested column")
+  }
 
   # call plot function
-  checkRCOplots(rw_v = rw_v,
-                cov_df = cov_ma,
-                targ_input_df = targ_input_df,
-                single_set_df = single_set_df,
-                single_opt_det_v = single_opt_det_v,
-                risk_contributions_v = risk_contributions_v,
-                plot_type = plot_type)
+  draw_plot(rw_v = rw_v,
+            cov_df = cov_ma,
+            targ_input_df = targ_input_df,
+            single_set_df = single_set_df,
+            single_opt_det_df = single_opt_det_df,
+            risk_contributions_v = risk_contributions_v,
+            plot_type = plot_type)
 }
 
 #short tickers for printing in plots
@@ -2212,14 +2239,14 @@ plotSingleSetIDfromRCOres <- function(setid, RCOres_l, plot_type)
 }
 
 
-checkRCOplots <- function(rw_v,
-                          cov_df,
-                          targ_input_df,
-                          single_set_df,
-                          single_opt_det_v,
-                          risk_contributions_v,
-                          ShortIndexWithOptimCash = 0,
-                          plot_type){
+draw_plot <- function(rw_v,
+                      cov_df,
+                      targ_input_df,
+                      single_set_df,
+                      single_opt_det_df,
+                      risk_contributions_v,
+                      ShortIndexWithOptimCash = 0,
+                      plot_type){
 
   #reduce to active securities again for plotting
   get_active_sec <- function(v, convictions_v){
@@ -2233,227 +2260,288 @@ checkRCOplots <- function(rw_v,
     }
   }
 
-  # recaclulate the effectively set boundaries
-  w_range <- f.getWeightRange(targ_input_df$lb,
-                              targ_input_df$ub,
-                              targ_input_df$conviction,
-                              targ_input_df$tradeability,
-                              single_set_df$MaxRelWeight,
-                              single_set_df$LowConvictionExitInDays,
-                              single_set_df$ConvictionGroups)
+
+  # Structure validation
+  names_targ_v <- c("lb", "ub", "conviction", "tradeability", "RiskBudget")
+  names_set_v <- c("MaxRelWeight", "LowConvictionExitInDays", "ConvictionGroups", "setID")
+  if(all(names_targ_v %in% colnames(targ_input_df)) == TRUE &&
+     all(names_set_v %in% colnames(single_set_df)) == TRUE &&
+     "TotalRBDev" %in% colnames(single_opt_det_df)){
 
 
-  tickers_v <- rownames(targ_input_df)
-  convictions_v <-  targ_input_df$conviction
-  lb_v <- w_range$w_min
-  ub_v <- w_range$w_max
-  rb_v <- targ_input_df$RiskBudget
 
-  #adjust lower bounds to reflect implementable lbs!
-  lb_v[-1] <- (1+rw_v[1])*lb_v[-1]
-
-  lb_act_v <- get_active_sec(lb_v, convictions_v)
-  ub_act_v <- get_active_sec(ub_v, convictions_v)
-  rw_act_v <- get_active_sec(rw_v, convictions_v)
-  rb_act_v <- get_active_sec(rb_v, convictions_v)
-  tickers_act_v <- get_active_sec(tickers_v, convictions_v)
-  convictions_act_v <- convictions_v[convictions_v != 0]
-  rc_act_v <- risk_contributions_v
-
-  all <- c(rb_act_v, rc_act_v)
-  range <- c(min(all), max(all))
-  # Add 10% to let text be inside a plot
-  range <- range * 1.1
-
-  txtsize <- ifelse(length(rc_act_v) > 40, 0.8, 1)
-
-  if(any(is.na(rw_v))){
-    # This means that optimization has failed
-    print("checkRCOplots: Optimization failed")
-
-    graphics::plot(1,1,main = "Optimization failed")
-
-  }else{
-    # Optimization succeeded
-    if(plot_type == "act_rel_weights"){
-
-      plot_active_relative_weights <- function(rw_act_v,
-                                               tickers_act_v,
-                                               txtsize,
-                                               lb_act_v,
-                                               ub_act_v,
-                                               convictions_act_v){
-
-        title_part1 <- paste0("Settings set ",single_set_df$setID,": ")
-        # calculate active weights share
-        total_ind_dev <- sum(abs(rw_act_v))
-        title_part2 <- paste0("Sum of deviations from BM weights is ", 100*round(total_ind_dev,2)," %")
-
-        # Check if a constraint is active
-        boundary_hit_lb <- round(lb_act_v,3) == round(rw_act_v,3)
-        boundary_hit_ub <- round(ub_act_v,3) == round(rw_act_v,3)
-
-        # If lower or uppder bound is achieved set flag = TRUE
-        boundary_hit <- boundary_hit_lb | boundary_hit_ub
-
-        # create range for scales
-        range <- c(min(rw_act_v), max(rw_act_v))
-        range[1] <- range[1] * 1.2
-        range[2] <- range[2] * 1.6
-
-        # Bar Plot: Share of active weights
-        bp.rw <- graphics::barplot(rw_act_v,
-                                   beside = TRUE,
-                                   names.arg = .pT(tickers_act_v),
-                                   las = 2,
-                                   cex.names = txtsize,
-                                   main = paste0(title_part1, title_part2),
-                                   col = ifelse(boundary_hit == TRUE, "red", "black"),
-                                   xlab = "Tickers",
-                                   ylab = "Relative Weights",
-                                   ylim = range)
-
-        # Show also lower and upper bounds to make sure that optimization is valid
-        graphics::points(x = bp.rw, y = lb_act_v, pch = 20, col = "blue")
-        graphics::points(x = bp.rw, y = ub_act_v, pch = 20, col = "blue")
-
-        # Add convictions: to make sure the direction and the amplitude is feasible
-        shift <- 0.0015 * sign(rw_act_v)
-        graphics::text(x = bp.rw,
-                       y = shift + rw_act_v,
-                       labels = round(convictions_act_v,0),
-                       cex = txtsize,
-                       col = "darkgreen")
-
-        # legend: bar plot share of active weights
-        graphics::legend("topleft",
-                         c("unrestricted", "restricted", "boundary", "convictions"),
-                         col = c("black", "red", "blue", "darkgreen"),
-                         pch = c(15,15,20,17),
-                         bty = "n",
-                         cex = 1)
-
-      }
-
-      plot_active_relative_weights(rw_act_v = rw_act_v,
-                                   tickers_act_v = tickers_act_v,
-                                   txtsize = txtsize,
-                                   lb_act_v = lb_act_v,
-                                   ub_act_v = ub_act_v,
-                                   convictions_act_v = convictions_act_v)
+    # recaclulate the effectively set boundaries
+    w_range <- f.getWeightRange(targ_input_df$lb,
+                                targ_input_df$ub,
+                                targ_input_df$conviction,
+                                targ_input_df$tradeability,
+                                single_set_df$MaxRelWeight,
+                                single_set_df$LowConvictionExitInDays,
+                                single_set_df$ConvictionGroups)
 
 
-    }else if(plot_type == "risk_contr"){
+    tickers_v <- rownames(targ_input_df)
+    convictions_v <-  targ_input_df$conviction
+    lb_v <- w_range$w_min
+    ub_v <- w_range$w_max
+    rb_v <- targ_input_df$RiskBudget
 
-      plot_risk_contributions <- function(rc_act_v,
-                                          rb_act_v,
-                                          tickers_act_v,
-                                          txtsize,
-                                          total_rb_dev){
+    #adjust lower bounds to reflect implementable lbs!
+    lb_v[-1] <- (1+rw_v[1])*lb_v[-1]
 
-        # Convert to percentage
-        rc_act_v <- rc_act_v * 100
-        rb_act_v <- rb_act_v * 100
-        title_part1 <- paste0("Settings set ",single_set_df$setID,": ")
-        title_part2 <- paste0("Sum of deviations from target RC = ",total_rb_dev, ". sum(RC) = ", sum(rc_act_v), "%")
+    lb_act_v <- get_active_sec(lb_v, convictions_v)
+    ub_act_v <- get_active_sec(ub_v, convictions_v)
+    rw_act_v <- get_active_sec(rw_v, convictions_v)
+    rb_act_v <- get_active_sec(rb_v, convictions_v)
+    tickers_act_v <- get_active_sec(tickers_v, convictions_v)
+    convictions_act_v <- convictions_v[convictions_v != 0]
+    rc_act_v <- risk_contributions_v
 
-        # Check if risk budget is violated
-        rb_hits <- abs(round(rc_act_v,3)) >= abs(round(rb_act_v,3))
+    all <- c(rb_act_v, rc_act_v)
+    range <- c(min(all), max(all))
+    # Add 10% to let text be inside a plot
+    range <- range * 1.1
 
-        # get max and min values of RB and RC to create correct range for a plot
-        r_min <- min(c(rc_act_v, rb_act_v))
-        r_max <- max(c(rc_act_v, rb_act_v))
-        range <- c(r_min, r_max)
-        # Add a bit more space for text and legend
-        range[1] <- range[1] * 1.2
-        range[2] <- range[2] * 1.4
+    txtsize <- ifelse(length(rc_act_v) > 40, 0.8, 1)
 
-        # Risk Contributions Bar plot
-        # rc_act_v - risk contributions in percentage from total risk
-        x <- graphics::barplot(rc_act_v,
-                               ylim = range,
-                               ylab = "risk contribution in %",
-                               beside = TRUE,
-                               names.arg = .pT(tickers_act_v),
-                               las = 2,
-                               col = ifelse(rb_hits == TRUE, "red", "black"),
-                               cex.names = txtsize,
-                               main = paste0(title_part1, title_part2))
+    if(any(is.na(rw_v))){
+      # This means that optimization has failed
+      print("draw_plot: Optimization failed")
 
-        # Add risk budget targets
-        # rb_act_v -  target risk budget in %
-        graphics::points(x = x, y = rb_act_v, pch = 20, col = "blue")
-
-        # Add utilization percentage
-        rb_utilization <- round(((rc_act_v / rb_act_v) * 100), 0)
-        rb_utilization <- rb_utilization
-        shift <- 0.5 * sign(rc_act_v)
-        graphics::text(x,
-                       shift + rc_act_v,
-                       labels = rb_utilization,
-                       cex = txtsize,
-                       col = "darkgreen")
-
-        # legend: bar plot share of active weights
-        graphics::legend("topleft",
-                         c("unrestricted", "restricted", "target", "utilization(%)"),
-                         col = c("black", "red", "blue", "darkgreen"),
-                         pch = c(15,15,20,17),
-                         bty = "n",
-                         cex = 1)
-      }
-
-      plot_risk_contributions(rc_act_v,
-                              rb_act_v,
-                              tickers_act_v,
-                              txtsize,
-                              single_opt_det_v["total_rb_dev"])
-
-
+      graphics::plot(1,1,main = "Optimization failed")
 
     }else{
-      # plot type is not correct
-      print("checkRCOplots: plot type is not supported")
-      title_part1 <- paste0("Settings set ",single_set_df$setID,": ")
-      title_part2 <- "Check plot type"
-      graphics::plot(1,1, main = paste0(title_part1, title_part2))
-    }
+      # Optimization succeeded
+      if(plot_type == "overview"){
+        plot_overview <- function(rb_act_v,
+                                  rc_act_v,
+                                  rw_act_v,
+                                  convictions_act_v,
+                                  setid){
+
+          all <- c(rb_act_v, rc_act_v)
+          range <- c(min(all), max(all))
+          # Add 10% to let text be inside a plot
+          range <- range * 1.1
+
+          title <- paste0("Settings ID: ", setid, " Risk budget utilization (size prop to weight)")
+          graphics::plot(rb_act_v,
+                         rc_act_v,
+                         col = ifelse(sign(convictions_act_v) >= 0, "darkgreen", "red"),
+                         xlim = range,
+                         ylim = range,
+                         xlab = "risk budget",
+                         ylab = "risk contribution",
+                         pch = 20,
+                         cex = abs(rw_act_v) / mean(abs(rw_act_v)),
+                         main = title)
+
+          # Add line 45 degrees as a benchmark for the fit
+          graphics::abline(a = 0,
+                           b = 1,
+                           lty = 3,
+                           lwd = 0.25,
+                           col = "black")
+
+          graphics::legend("topleft",
+                           c("long", "short", "perfert fit"),
+                           col = c("darkgreen", "red", "black"),
+                           pch = 20,
+                           bty = "n",
+                           cex = 1)
+        }
+
+        plot_overview(rb_act_v = rb_act_v,
+                      rc_act_v = rc_act_v,
+                      rw_act_v = rw_act_v,
+                      convictions_act_v = convictions_act_v,
+                      setid = single_set_df$setID)
+      }
+      else if(plot_type == "act_rel_weights"){
+
+        plot_active_relative_weights <- function(rw_act_v,
+                                                 tickers_act_v,
+                                                 txtsize,
+                                                 lb_act_v,
+                                                 ub_act_v,
+                                                 convictions_act_v,
+                                                 setid){
+
+          title_part1 <- paste0("Settings set " ,setid, ": ")
+          # calculate active weights share
+          total_ind_dev <- sum(abs(rw_act_v))
+          title_part2 <- paste0("Sum of deviations from BM weights is ", 100*round(total_ind_dev,2)," %")
+
+          # Check if a constraint is active
+          boundary_hit_lb <- round(lb_act_v,3) == round(rw_act_v,3)
+          boundary_hit_ub <- round(ub_act_v,3) == round(rw_act_v,3)
+
+          # If lower or uppder bound is achieved set flag = TRUE
+          boundary_hit <- boundary_hit_lb | boundary_hit_ub
+
+          # create range for scales
+          range <- c(min(rw_act_v), max(rw_act_v))
+          range[1] <- range[1] * 1.2
+          range[2] <- range[2] * 1.6
+
+          # Bar Plot: Share of active weights
+          bp.rw <- graphics::barplot(rw_act_v,
+                                     beside = TRUE,
+                                     names.arg = .pT(tickers_act_v),
+                                     las = 2,
+                                     cex.names = txtsize,
+                                     main = paste0(title_part1, title_part2),
+                                     col = ifelse(boundary_hit == TRUE, "red", "black"),
+                                     xlab = "Tickers",
+                                     ylab = "Relative Weights",
+                                     ylim = range)
+
+          # Show also lower and upper bounds to make sure that optimization is valid
+          graphics::points(x = bp.rw, y = lb_act_v, pch = 20, col = "blue")
+          graphics::points(x = bp.rw, y = ub_act_v, pch = 20, col = "blue")
+
+          # Add convictions: to make sure the direction and the amplitude is feasible
+          shift <- 0.0015 * sign(rw_act_v)
+          graphics::text(x = bp.rw,
+                         y = shift + rw_act_v,
+                         labels = round(convictions_act_v,0),
+                         cex = txtsize,
+                         col = "darkgreen")
+
+          # legend: bar plot share of active weights
+          graphics::legend("topleft",
+                           c("unrestricted", "restricted", "boundary", "convictions"),
+                           col = c("black", "red", "blue", "darkgreen"),
+                           pch = c(15,15,20,17),
+                           bty = "n",
+                           cex = 1)
+
+        }
+
+        plot_active_relative_weights(rw_act_v = rw_act_v,
+                                     tickers_act_v = tickers_act_v,
+                                     txtsize = txtsize,
+                                     lb_act_v = lb_act_v,
+                                     ub_act_v = ub_act_v,
+                                     convictions_act_v = convictions_act_v,
+                                     setid = single_set_df$setID)
+
+
+      }else if(plot_type == "risk_contr"){
+
+        plot_risk_contributions <- function(rc_act_v,
+                                            rb_act_v,
+                                            tickers_act_v,
+                                            txtsize,
+                                            TotalRBDev,
+                                            setid){
+
+          # Convert to percentage
+          rc_act_v <- rc_act_v * 100
+          rb_act_v <- rb_act_v * 100
+          title_part1 <- paste0("Settings set ", setid, ": ")
+          title_part2 <- paste0("Sum of deviations from target RC = ",
+                                round(TotalRBDev,3),
+                                ". sum(RC) = ", sum(rc_act_v), "%")
+
+          # Check if risk budget is violated
+          rb_hits <- abs(round(rc_act_v,3)) >= abs(round(rb_act_v,3))
+
+          # get max and min values of RB and RC to create correct range for a plot
+          r_min <- min(c(rc_act_v, rb_act_v))
+          r_max <- max(c(rc_act_v, rb_act_v))
+          range <- c(r_min, r_max)
+          # Add a bit more space for text and legend
+          range[1] <- range[1] * 1.2
+          range[2] <- range[2] * 1.4
+
+          # Risk Contributions Bar plot
+          # rc_act_v - risk contributions in percentage from total risk
+          x <- graphics::barplot(rc_act_v,
+                                 ylim = range,
+                                 ylab = "risk contribution in %",
+                                 beside = TRUE,
+                                 names.arg = .pT(tickers_act_v),
+                                 las = 2,
+                                 col = ifelse(rb_hits == TRUE, "red", "black"),
+                                 cex.names = txtsize,
+                                 main = paste0(title_part1, title_part2))
+
+          # Add risk budget targets
+          # rb_act_v -  target risk budget in %
+          graphics::points(x = x, y = rb_act_v, pch = 20, col = "blue")
+
+          # Add utilization percentage
+          rb_utilization <- round(((rc_act_v / rb_act_v) * 100), 0)
+          rb_utilization <- rb_utilization
+          shift <- 0.5 * sign(rc_act_v)
+          graphics::text(x,
+                         shift + rc_act_v,
+                         labels = rb_utilization,
+                         cex = txtsize,
+                         col = "darkgreen")
+
+          # legend: bar plot share of active weights
+          graphics::legend("topleft",
+                           c("unrestricted", "restricted", "target", "utilization(%)"),
+                           col = c("black", "red", "blue", "darkgreen"),
+                           pch = c(15,15,20,17),
+                           bty = "n",
+                           cex = 1)
+        }
+
+        plot_risk_contributions(rc_act_v,
+                                rb_act_v,
+                                tickers_act_v,
+                                txtsize,
+                                single_opt_det_df$TotalRBDev,
+                                single_set_df$setID)
+
+
+
+      }else{
+        # plot type is not correct
+        print("draw_plot: plot type is not supported")
+        title_part1 <- paste0("Settings set ",single_set_df$setID,": ")
+        title_part2 <- "Check plot type"
+        graphics::plot(1,1, main = paste0(title_part1, title_part2))
+      }
+    } # end of Optimization succeeded block
+  }else{
+    print("draw_plot: df structure is not correct")
+    stop("draw_plot: df structure is not correct")
   }
 }
 
 #distance function
-mydistfun <- function(test, benchmark)
+mydistfun <- function(lookup_df, point_v)
 {
-  message("the euclidean norm is used for all values, only for numeric inputs meaningful outputs result")
-  #ensure is numeric
-  #x
-  if(class(test[1,1])!="numeric"){
-    if(class(test[1,1])=="factor"){
-      message("factors are transformed to numeric. Are results still meaningful?")
+  if(class(lookup_df) == "data.frame" &&
+     (class(point_v) == "numeric" ||
+      class(point_v) == "integer" ||
+      class(point_v) == "character")){
 
-      test[,2] <- sapply(test[,1],f.as.numeric.factor)
+    message("the euclidean norm is used for all values, only for numeric inputs meaningful outputs result")
 
-    }else {
+    #ensure is numeric
+    if((class(lookup_df[,1]) %in% c("numeric","integer") == FALSE) ||
+       (class(lookup_df[,2]) %in% c("numeric","integer") == FALSE)){
+
       warning("No procedure for the distance measuring for the class of one axis available -> cant find clicked at point!!!")
+
+    }else{
+      #calc distance
+      dist <- (lookup_df[,1]-point_v[1])^2 + (lookup_df[,2]-point_v[2])^2
     }
+  }else{
+    print("mydistfun: input structure is not correct")
+    stop("mydistfun: input structure is not correct")
   }
-  #y
-  if(class(test[1,2])!="numeric"){
-    if(class(test[1,2])=="factor"){
-      message("factors are transformed to numeric. Are results still meaningful?")
-
-      test[,2] <- sapply(test[,2],f.as.numeric.factor)
-
-    }else {warning("No procedure for the distance measuring for the class of one axis available -> cant find clicked at point!!!")}
-  }
-  #calc distance
-  dist <- (test[,1]-benchmark[1])^2 + (test[,2]-benchmark[2])^2
 
   #more sophisticated solution for distances:
   #ipak("cluster")
   #dist <- cluster::: daisy(rbind(click,values))
 }
-
 
 draw_table <- function(setid, RCOres_l){
 
@@ -2461,15 +2549,18 @@ draw_table <- function(setid, RCOres_l){
   # The function creates a table with optimization details
   # This table is used as output in R shiny
 
-  # set corresponds to a column
-  det_df <- RCOres_l$details_ma[, setid, drop = FALSE]
-  # set corresponds to a row
-  set_df <- t(RCOres_l$settings_df[setid, , drop = FALSE])
-  union_df <- rbind(det_df, set_df)
+  # get details and settings
+  det_df <- RCOres_l$details_df[setid, , drop = FALSE]
+  set_df <- RCOres_l$settings_df[setid, , drop = FALSE]
+  # one row df
+  union_df <- cbind(det_df, set_df)
+  # one column df
+  union_df <- t(union_df)
+  colnames(union_df) <- paste0("SetID",setid)
 
   # Set required lines first
-  req_names <- c("total_rb_dev", "target_function_value", "TEact-TEtarg",
-                 "NetInvestment", "PortBeta", "IndexPosition")
+  req_names <- c("TotalRBDev", "ObjFunValue", "PortfTEDev",
+                 "NetInvestment", "PortfBeta", "IndexPosition")
   ind_v <- match(x = req_names, table = rownames(union_df))
   all_ind_v <- seq(1:nrow(union_df))
 

@@ -14,8 +14,8 @@ available_x_values_v <- c("setID", "TargetTE", "algo", "cov_run_id", "IndexFlex"
                           "Ix_eq_Cash" ,"SoftNetInvConstraint", "LeverageTolerance",
                           "NetInvLambda" , "xtol_rel")
 
-available_y_values_v <- c("total_rb_dev", "NetInvestment", "TEact-TEtarg",
-                          "IndexPosition", "PortBeta")
+available_y_values_v <- c("TotalRBDev", "NetInvestment", "PortfTEDev",
+                          "IndexPosition", "PortfBeta")
 
 
 header <- dashboardHeader(title = "Optimization Analytics")
@@ -94,17 +94,22 @@ body <- dashboardBody(tabItems(
 
             tabBox(id = "weights",
                    width = 12,
+                   tabPanel(title = "Comparison",
+                            splitLayout(cellWidths = c("50%", "50%"),
+                                        plotOutput('comparison', click = "comparison_plot_click"),
+                                        plotOutput('overview'))),
                    tabPanel(title = "Weights", plotOutput("weights")),
                    tabPanel(title = "RC", plotOutput("rc")),
-                   tabPanel(title = "Comparison",
-                            plotOutput("comparison", click = "comparison_plot_click" )),
                    tabPanel(title = "Details", dataTableOutput(outputId = "table"))
-          ))
-)))
+        )# tabBox
+      )# fluidRow
+    )# tabItem
+  )# TabItems
+)# dashboard body
 
 ui <- dashboardPage(header, sidebar, body)
 
-server <- function(input, output, session) {
+server <- function(input, output, session){
 
   # Combine the selected variables into a new data frame
   selectedData <- reactive({
@@ -174,19 +179,27 @@ server <- function(input, output, session) {
   output$comparison <- renderPlot({
 
     # The output is a plot
-    APS::compareRCOruns(RCOres_l = selectedData(),
-                   yaxis = input$ycol,
-                   xaxis = input$xcol,
-                   group_by = input$group_by,
-                   current_point = input$setid)
+    APS::compareRCOruns(setid = input$setid,
+                        RCOres_l = selectedData(),
+                        yaxis = input$ycol,
+                        xaxis = input$xcol,
+                        group_by = input$group_by,
+                        current_point = input$setid)
 
+  })
+
+  output$overview <- renderPlot({
+
+    APS::plotSingleSetIDfromRCOres(setid = input$setid,
+                                   RCOres_l = selectedData(),
+                                   plot_type = "overview")
   })
 
   output$weights <- renderPlot({
 
     APS::plotSingleSetIDfromRCOres(setid = input$setid,
-                              RCOres_l = selectedData(),
-                              plot_type = "act_rel_weights")
+                                   RCOres_l = selectedData(),
+                                   plot_type = "act_rel_weights")
 
 
   })
@@ -215,14 +228,14 @@ server <- function(input, output, session) {
     EvalRCOres <- selectedData()
 
     # Create a full set of possible options (which can be selected)
-    opt_set_and_details_df <- cbind(t(EvalRCOres$details_ma), EvalRCOres$settings_df)
+    opt_set_and_details_df <- cbind(EvalRCOres$details_df, EvalRCOres$settings_df)
     x_y_df <- opt_set_and_details_df[,c(input$xcol,input$ycol), drop = FALSE]
 
     # Get click coordinates
     click <- input$comparison_plot_click
     click <- c(click$x,click$y)
 
-    opt_set_and_details_df$dist <- APS::mydistfun(test = x_y_df, benchmark = click)
+    opt_set_and_details_df$dist <- APS::mydistfun(lookup_df = x_y_df, point_v = click)
     clickselected_setID <- opt_set_and_details_df[which.min(opt_set_and_details_df$dist),"setID"]
 
 
@@ -240,14 +253,15 @@ server <- function(input, output, session) {
   #output message
   observeEvent(eventExpr = input$save,
     {
+      browser()
       EvalRCOres <- selectedData()
 
-      f.writeOptdetails2xlsx(RCOres_l = EvalRCOres,
-                           Portfolio = input$portfolio,
-                           Calcdate = "LIVE",
-                           ShortIndexWithOptimCash = 1,
-                           ZeroNetInvestment = FALSE,
-                           OnlyID = input$setid)
+      APS::f.writeOptdetails2xlsx(RCOres_l = EvalRCOres,
+                                  Portfolio = input$portfolio,
+                                  Calcdate = "LIVE",
+                                  ShortIndexWithOptimCash = 1,
+                                  ZeroNetInvestment = FALSE,
+                                  OnlyID = input$setid)
 
       if(input$AddSet2SQL) {
         # get single settings set
@@ -257,20 +271,20 @@ server <- function(input, output, session) {
         inSQLas <- "the settings have not been backed up in the DB"
       }
 
-    # showModal(modalDialog(
-    #   title = paste("File for setID",input$setid,"has been written as xls-file"),
-    #   strong(paste("Its filename is",input$portfolio,"_LIVE_optdetails.xlsx"),
-    #          br(),
-    #          "It has been written to the location:",
-    #          br(),
-    #          paste0("G:/FAP/Equities/Betsizing/R_results/",input$portfolio),
-    #          "and its Settings are in SQL as: ",
-    #          br(),
-    #          inSQLas,
-    #          br(),
-    #          br(),
-    #          easyClose = TRUE
-    #   )))
+    showModal(modalDialog(
+      title = paste("File for setID",input$setid,"has been written as xls-file"),
+      strong(paste("Its filename is",input$portfolio,"_LIVE_optdetails.xlsx"),
+             br(),
+             "It has been written to the location:",
+             br(),
+             paste0("G:/FAP/Equities/Betsizing/R_results/",input$portfolio),
+             "and its Settings are in SQL as: ",
+             br(),
+             inSQLas,
+             br(),
+             br(),
+             easyClose = TRUE
+      )))
   }
   )
 }
