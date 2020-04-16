@@ -1,0 +1,329 @@
+library(shiny)
+library(shinydashboard)
+library(DT)
+library(shinyalert)
+# TODO distance does not work correctly with different X variables
+source("G:/FAP/Equities/Betsizing/Code/RCO.R")
+as.of <-  "2020-04-16" #
+Portfolio <- "RE_EU"
+filepath <- paste0("G:/FAP/Equities/Betsizing/R_results/",Portfolio,"/")
+
+# RCOres_l is loaded
+load(paste(filepath,as.of," RCOresPAA.R",sep=""))
+
+# For now only these values make sense
+available_x_values_v <- c("setID", "TargetTE", "algo", "cov_run_id", "IndexFlex", "CashTolerance",
+                          "Ix_eq_Cash" ,"SoftNetInvConstraint", "LeverageTolerance",
+                          "NetInvLambda" , "xtol_rel")
+
+available_y_values_v <- c("TotalRBDev", "NetInvestment", "PortfTEDev",
+                          "IndexPosition", "PortfBeta")
+
+
+header <- dashboardHeader(title = "Optimization Analytics")
+
+sidebar <- dashboardSidebar(
+  sidebarMenu(
+    menuItem("Main Page", tabName = "main", icon = icon("bar-chart-o")),
+    menuItem("Documentation", icon = icon("file-alt"),
+             href="http://wiki.suvanet.ch/display/fai/Bets-Sizing%3A+Optimierung+und+deren+Beurteilung#Bets-Sizing%3AOptimierungundderenBeurteilung-EvaluationInShiny"),
+
+    menuItem("Data Selection",
+             icon=icon("sliders"),
+
+              # Portfolio
+              selectInput(inputId = 'portfolio',
+                          label = 'Portfolio',
+                          choices = c('RE_EU','RE_CH','EQ_CH_L','EQ_CH_SM','EQ_EU_L','EQ_EU_SM')),
+              # Date
+              dateInput(inputId = 'date',
+                        label = 'Calculation Date',
+                        value = Sys.Date()),
+
+             # Settings ID
+             numericInput(inputId = 'setid',
+                          label = 'Settings ID',
+                          value = 1,
+                          min = 1,
+                          max = ncol(RCOres_l$rw_ma)),
+
+             # Main plot: dependent variable
+             selectInput(inputId = 'xcol',
+                         label = 'X Variable',
+                         choices = available_x_values_v,
+                         selected =  "SetID"),
+
+             # Main plot: independent variable
+             selectInput(inputId = 'ycol',
+                         label = 'Y Variable',
+                         choices = available_y_values_v,
+                         selected = "total_rb_dev"),
+
+             # Main plot: group by  (use the same colour for a group)
+             # TODO currectly only group by 1 single variable is supported
+             selectizeInput(inputId = 'group_by',
+                            label = 'Group by ',
+                            choices = available_x_values_v,
+                            selected =  "TargetTE",
+                            multiple = TRUE)
+             ), # menu item,
+    actionButton(inputId = "save",
+                 label =  "Save",
+                 icon = icon("save"),
+                 class = "btn action-button",
+                 width = "85%"),
+
+    checkboxInput(inputId = 'AddSet2SQL',
+                  label = 'Add Settings to SQL if saved',
+                  value = FALSE),
+    useShinyalert(),
+    checkboxInput(inputId = 'makeDefault',
+                  label = 'Make saved set default',
+                  value = FALSE)
+    ) # sidebar menu
+  ) # dashboard sidebar
+
+body <- dashboardBody(tabItems(
+
+  # First tab content
+  tabItem(tabName = "main",
+          h2("Optimization Analytics"),
+          fluidRow(
+
+            tabBox(id = "weights",
+                   width = 12,
+                   tabPanel(title = "Comparison",
+                            splitLayout(cellWidths = c("50%", "50%"),
+                                        plotOutput('comparison', click = "comparison_plot_click"),
+                                        plotOutput('overview'))),
+                   tabPanel(title = "Weights", plotOutput("weights")),
+                   tabPanel(title = "RC", plotOutput("rc")),
+                   tabPanel(title = "Details", dataTableOutput(outputId = "table"))
+        )# tabBox
+      )# fluidRow
+    )# tabItem
+  )# TabItems
+)# dashboard body
+
+ui <- dashboardPage(header, sidebar, body)
+
+server <- function(input, output, session){
+
+  # Combine the selected variables into a new data frame
+  selectedData <- reactive({
+
+    as.of <-  input$date
+    portfolio <- input$portfolio
+
+    validate(
+      need(file.exists(paste0("G:/FAP/Equities/Betsizing/R_results/",portfolio,"/",as.of," RCOresPAA.R")),
+           label = "Correct portfolio name and date")
+    )
+
+    validate(
+      need(input$group_by != "", "Fill group by field")
+    )
+
+    # For a new portfolio download optimization results
+
+    filepath <- paste0("G:/FAP/Equities/Betsizing/R_results/",portfolio,"/")
+    EvalRCOres <- load(file = paste(filepath, as.of, " RCOresPAA.R", sep = ""))
+    EvalRCOres <- get(EvalRCOres)
+
+    # TODO finish this
+    # Covariance matrix IDs
+    available_cov_id_v <- dimnames(EvalRCOres$cov_3D_array)$CovsetID
+    cov_id_v <- c("used for opt", available_cov_id_v)
+
+    # Update available Setting IDs
+    updateNumericInput(session = session,
+                       inputId = 'setid',
+                       label = 'Settings ID',
+                       value = 1,
+                       min = 1,
+                       max = ncol(EvalRCOres$rw_ma))
+
+    # update choice options: reduce to what has been varied!
+    settings_x_df <- EvalRCOres$settings_df[,available_x_values_v]
+
+    # available options list: contains options names with unique choices for each option
+    avail_options_l <- apply(settings_x_df,2,unique)
+    # There is no sense to let user vary an optiono with only one available choice
+    set_with_sev_opt_ind <- which(lengths(avail_options_l) > 1)
+    # take the corresponding settings names (with several optiones available)
+    set_with_sev_opt_v <- names(avail_options_l[set_with_sev_opt_ind])
+
+    # Update independent variable select options
+    updateSelectInput(session = session,
+                      inputId = 'xcol',
+                      label = 'X Variable',
+                      choices = set_with_sev_opt_v,
+                      selected = input$xcol)
+
+    # Update Grouped By parameter options
+    updateSelectizeInput(session = session,
+                         inputId = 'group_by',
+                         label = 'Group by ',
+                         choices = set_with_sev_opt_v,
+                         selected = input$group_by)
+
+    # tickbox
+    output$addSet2SQL <- reactive({input$AddSet2SQL})
+
+    # EvalRCOres
+    EvalRCOres
+})
+
+output$comparison <- renderPlot({
+  browser()
+
+  # The output is a plot
+  APS::compareRCOruns(setid = input$setid,
+                      RCOres_l = selectedData(),
+                      yaxis = input$ycol,
+                      xaxis = input$xcol,
+                      group_by = input$group_by,
+                      current_point = input$setid)
+
+})
+
+output$overview <- renderPlot({
+
+  plotSingleSetIDfromRCOres(setid = input$setid,
+                                 RCOres_l = selectedData(),
+                                 plot_type = "overview")
+})
+
+output$weights <- renderPlot({
+
+  plotSingleSetIDfromRCOres(setid = input$setid,
+                                 RCOres_l = selectedData(),
+                                 plot_type = "act_rel_weights")
+
+
+})
+
+output$rc <- renderPlot({
+
+  plotSingleSetIDfromRCOres(setid = input$setid,
+                                 RCOres_l = selectedData(),
+                                 plot_type = "risk_contr")
+})
+
+output$table <- DT::renderDataTable({
+
+  draw_table(setid = input$setid,
+                  RCOres_l = selectedData())
+
+
+})
+
+
+# Event Click: Show details for a chosen optimization settings point
+observeEvent(eventExpr = input$comparison_plot_click, handlerExpr =
+{
+  # Start of event handler
+  # update input
+  EvalRCOres <- selectedData()
+
+  # Create a full set of possible options (which can be selected)
+  opt_set_and_details_df <- cbind(EvalRCOres$details_df, EvalRCOres$settings_df)
+  x_y_df <- opt_set_and_details_df[,c(input$xcol,input$ycol), drop = FALSE]
+
+  # Get click coordinates
+  click <- input$comparison_plot_click
+  click <- c(click$x,click$y)
+
+  opt_set_and_details_df$dist <- mydistfun(lookup_df = x_y_df, point_v = click)
+  clickselected_setID <- opt_set_and_details_df[which.min(opt_set_and_details_df$dist),"setID"]
+
+
+  if(exists("clickselected_setID"))
+  {
+    updateNumericInput(session = session,
+                       inputId = 'setid',
+                       label = 'Settings ID',
+                       value = clickselected_setID,
+                       min = 1,
+                       max = ncol(EvalRCOres$rw_ma))
+  }
+})
+
+#output message
+observeEvent(eventExpr = input$save,
+  {
+    if(input$AddSet2SQL == FALSE &&
+       input$makeDefault == TRUE){
+
+      shinyalert(title = "Warning",
+                 type = "warning",
+                 closeOnEsc = TRUE,
+                 closeOnClickOutside = TRUE,
+                 showConfirmButton = TRUE,
+                 animation = TRUE,
+                 html = TRUE,
+                 text = paste0("'Make Default' works only with checked 'Add set to SQL' option. It will be ignored.") # end text
+      ) # end shinyalert
+
+      # let a user read a message
+      Sys.sleep(time = 5)
+      updateCheckboxInput(session = session,
+                          inputId = 'makeDefault',
+                          label = 'Add Settings to SQL if saved',
+                          value = FALSE)
+
+    }else{
+      # To additional message required
+    }
+
+    EvalRCOres <- selectedData()
+
+    f.writeOptdetails2xlsx(RCOres_l = EvalRCOres,
+                           Portfolio = input$portfolio,
+                           Calcdate = "LIVE",
+                           ShortIndexWithOptimCash = 1,
+                           ZeroNetInvestment = FALSE,
+                           OnlyID = input$setid)
+
+    if(input$AddSet2SQL){
+      # get single settings set
+      set_df <- EvalRCOres$settings_df[input$setid, , drop = FALSE]
+
+      inSQLas <- writeRCOsettingsToSQL(set_df)
+      # get only a number
+      inSQLas <- as.numeric(gsub("\\D", "", as.character(inSQLas[1,1])))
+
+      if(input$makeDefault){
+
+        update_default_settings(pname = input$portfolio,
+                                setID = inSQLas,
+                                covID = set_df$cov_run_id)
+        isDefault <- "Yes"
+
+      }else{
+        isDefault <- "No"
+      }
+    }else{
+      inSQLas <- "DB has not been updated"
+      isDefault <- "No"
+    }
+
+    shinyalert(title = paste("Settings with ID",input$setid,"has been saved!"),
+               type = "success",
+               closeOnEsc = TRUE,
+               closeOnClickOutside = TRUE,
+               showConfirmButton = TRUE,
+               animation = TRUE,
+               html = TRUE,
+               text = paste0(paste0("<b>Filename:</b> ", input$portfolio, "_LIVE_optdetails.xlsx <br />"),
+                             paste0("<b>Path:</b> G:/FAP/Equities/Betsizing/R_results/", input$portfolio, "<br />"),
+                             paste0("<b>SQL table name:</b> betsizing.CalculationRCOSettingSets <br />"),
+                             paste0("<b>Set ID:</b> ", inSQLas,"<br />"),
+                             paste0("<b>Set is default:</b> ", isDefault,"<br />")
+                             ) # end text
+               ) # end shinyalert
+} # end handler
+) # end observe event
+} # end server
+
+shinyApp(ui, server)

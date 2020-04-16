@@ -1,5 +1,3 @@
-rm(list = ls())
-
 # You can learn more about package authoring with RStudio at:
 #
 #   http://r-pkgs.had.co.nz/
@@ -845,7 +843,7 @@ get_rcb <- function(weight_v, cov){
 
     # Dimensions check
     stopifnot(isTRUE(is.vector(weight_v)) &&
-              length(weight_v) == nrow(cov)
+                length(weight_v) == nrow(cov)
               && nrow(cov) == ncol(cov))
 
     RCO_names_v <- names(weight_v)
@@ -1205,7 +1203,7 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
         # yes it is possible. Can occur if the tolerance level is too high.
         # so here tolerance options can be adjusted
       }
-      }else{
+    }else{
       # opt_output$satus < 0
       # Algorithm has failed
       validResult <- FALSE
@@ -1304,8 +1302,8 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
 
       }else{
         cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",
-                 single_optim_details_df$PortfTEDev,
-                 " and the resulting weights are:", sep="\n")
+            single_optim_details_df$PortfTEDev,
+            " and the resulting weights are:", sep="\n")
 
         print(data.frame(conviction = targ$conviction,
                          rw = rw,
@@ -1491,7 +1489,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # soft leverage constrained: depends on Cash- and LeverageTolerance, needed in Settings to filter out algos that do not work!
       all_possible_settings_df$SoftNetInvConstraint <- ifelse(all_possible_settings_df$LeverageTolerance != 0 |
-                                                              all_possible_settings_df$CashTolerance != 0,
+                                                                all_possible_settings_df$CashTolerance != 0,
                                                               TRUE, FALSE)
 
       # Available algorithms
@@ -1501,7 +1499,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
       # Soft leverage constrained does not work with Lagrangian optimizer (as Lagrangian uses an equality constraint!)
       # find infeasible combinations
       ind_to_delete <- which(all_possible_settings_df$algo %in% algo_lagrange &
-                             all_possible_settings_df$SoftNetInvConstraint == TRUE)
+                               all_possible_settings_df$SoftNetInvConstraint == TRUE)
 
       if (length(ind_to_delete) > 0){
         # it means that there is at least one infeasible combination
@@ -1519,8 +1517,8 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo
       ind_to_delete <- which((all_possible_settings_df$algo %in% algo_gradient |
-                              all_possible_settings_df$SoftNetInvConstraint |
-                              all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
+                                all_possible_settings_df$SoftNetInvConstraint |
+                                all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
 
       if (length(ind_to_delete) > 0){
 
@@ -1537,7 +1535,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint == TRUE
       ind_to_delete <- which((all_possible_settings_df$NetInvLambda > 0 &
-                              all_possible_settings_df$SoftNetInvConstraint == FALSE))
+                                all_possible_settings_df$SoftNetInvConstraint == FALSE))
 
       if (length(ind_to_delete) > 0){
 
@@ -1570,8 +1568,8 @@ get_default_CovMaID <- function(Portfolioname){
   stopifnot(class(Portfolioname) == "character")
 
   def_cov_id_query <- paste0("select max(CovMatrixRunID) as defCovMaID
-                            from betsizing.CalculationDefaultSettings
-                            where CustomPortfolioName = '", Portfolioname, "'")
+                             from betsizing.CalculationDefaultSettings
+                             where CustomPortfolioName = '", Portfolioname, "'")
 
   # Execute Query and return the default COVID
   con <- FAFunc.GetDB()
@@ -1586,7 +1584,7 @@ get_default_CovMaID <- function(Portfolioname){
     }else{
       print(paste0("NLopt solver status: ", -22))
       print("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
-           "was calculated yet for the given portfolio")
+            "was calculated yet for the given portfolio")
       stop("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
            "was calculated yet for the given portfolio")
     }
@@ -2120,23 +2118,18 @@ compareRCOruns <- function(setid,
                             "Ix_eq_Cash" ,"SoftNetInvConstraint", "LeverageTolerance",
                             "NetInvLambda" , "xtol_rel")
 
-  x_short_names <- c("sID", "tTE", "alg", "cov", "iF", "CT","iEC", "SNI","LT", "NIL", "xT")
-
-  # it is used in group_by
-  names(available_x_values_v) <- x_short_names
-
   available_y_values_v <- c("TotalRBDev", "NetInvestment", "PortfTEDev",
                             "IndexPosition", "PortfBeta")
 
 
   # RCOres_l$details_df and RCOres_l$settings_df contain optimization details and settings
   # for each feasible optimization settings set.
-  # Unite all columns to let group by several columns
+  # Unite all columns to let later group by a column
   opt_res_df <- cbind(RCOres_l$details_df, RCOres_l$settings_df)
 
   if(xaxis %in% available_x_values_v &&
      yaxis %in% available_y_values_v &&
-     all(group_by %in% available_x_values_v)){
+     group_by %in% available_x_values_v){
 
     # set points size
     sz <- rep(3, nrow(opt_res_df))
@@ -2163,36 +2156,17 @@ compareRCOruns <- function(setid,
     # colnames(opt_res_df) <- cnames
     # yaxis <- cnames[ind]
 
-
+    # Group by must be a factor
+    opt_res_df[,group_by] <- as.factor(opt_res_df[,group_by])
     opt_res_df[,xaxis] <- as.factor(opt_res_df[,xaxis])
-
-    if(length(group_by) > 1){
-
-      full_names_v <- available_x_values_v[available_x_values_v %in% group_by]
-      short_names_v <- names(full_names_v)
-      group_by_cols_df <- opt_res_df[,full_names_v, drop = FALSE]
-      n <- nrow(group_by_cols_df)
-      group_by_values_v <- rep("", n)
-      for(i in 1:n)
-      {
-        values_v <- group_by_cols_df[i,]
-        group_by_value <- paste(short_names_v, values_v, sep=':', collapse = ';')
-        group_by_values_v[i] <- group_by_value
-      }
-
-      opt_res_df$GroupBy <- as.factor(group_by_values_v)
-
-    }else{
-      opt_res_df[,group_by] <- as.factor(opt_res_df[,group_by])
-    }
 
     # Plot
     ggplot2::ggplot(data = opt_res_df,
                     ggplot2::aes_string(y = yaxis,
                                         x = xaxis, #jitter(xaxis, factor=Jitter),
-                                        color = ifelse(length(group_by) == 1, group_by, "GroupBy"),
-                                        group = ifelse(length(group_by) == 1, group_by, "GroupBy"),
-                                        fill = ifelse(length(group_by) == 1, group_by, "GroupBy"))) +
+                                        color = group_by,
+                                        group = group_by,
+                                        fill = group_by)) +
       ggplot2::geom_line(size = 0.5) +
       ggplot2::geom_point(size = sz, shape = pmin(sz + 18, 23)) +
       ggplot2::theme(legend.position = "right",
@@ -2592,8 +2566,8 @@ draw_table <- function(setid, RCOres_l){
   union_df <- union_df[c(ind_v, all_ind_v[!all_ind_v %in% ind_v]), ,drop = FALSE]
 
   DT::datatable(data =  union_df,
-            rownames = TRUE,
-            selection = list(mode = 'multiple', selected = c(1,2,3,4,5,6)))
+                rownames = TRUE,
+                selection = list(mode = 'multiple', selected = c(1,2,3,4,5,6)))
 }
 
 writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
@@ -2698,51 +2672,5 @@ writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
   }else{
     print("writeRCOsettingsToSQL:input is not a data.frame")
     stop("writeRCOsettingsToSQL:input is not a data.frame")
-  }
-}
-
-update_default_settings <- function(pname, setID, covID){
-
-  # Description:
-  # The function updates default settings for a portfolio
-  # This is done using SP [betsizing].[uspUpdateCalculationDefaultSettings]
-
-  if(is.null(pname) == FALSE &&
-     is.null(setID) == FALSE &&
-     is.null(covID) == FALSE &&
-     length(pname) == 1 &&
-     length(setID) == 1 &&
-     length(covID) == 1){
-
-    if(is.character(pname) && is.numeric(setID) && is.numeric(covID)){
-
-      query <- paste0("EXEC [betsizing].[uspUpdateCalculationDefaultSettings] ",
-                      "@CustomPortfolioName = '",pname,"', ",
-                      "@FKCalculationRCOSettingSetID = '",setID,"', ",
-                      "@CovMatrixRunID = '",covID,"'")
-
-      con <- FAFunc.GetDB()
-      query_res <-  RODBC::sqlQuery(con, query)
-      RODBC::odbcClose(con)
-
-      if(class(query_res) == "character"){
-        if(length(query_res) == 0){
-
-          print("Default settings have been updated!")
-        }else{
-          print("update_default_settings:exec [betsizing].[uspUpdateCalculationDefaultSettings]  gave no results")
-          stop("update_default_settings:exec [betsizing].[uspUpdateCalculationDefaultSettings]  gave no results")
-        }
-      }else{
-        print("update_default_settings:SQL query failed")
-        stop("update_default_settings:SQL query failed")
-      }
-    }else{
-      print("update_default_settings: setID and covID must be numbers")
-      stop("update_default_settings: setID and covID must be numbers")
-    }
-  }else{
-    print("update_default_settings: some input parameters are empty or length != 1")
-    stop("update_default_settings: some input parameters are empty  or length != 1")
   }
 }

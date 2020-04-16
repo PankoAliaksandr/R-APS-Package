@@ -1,5 +1,3 @@
-rm(list = ls())
-
 # You can learn more about package authoring with RStudio at:
 #
 #   http://r-pkgs.had.co.nz/
@@ -845,7 +843,7 @@ get_rcb <- function(weight_v, cov){
 
     # Dimensions check
     stopifnot(isTRUE(is.vector(weight_v)) &&
-              length(weight_v) == nrow(cov)
+                length(weight_v) == nrow(cov)
               && nrow(cov) == ncol(cov))
 
     RCO_names_v <- names(weight_v)
@@ -1205,7 +1203,7 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
         # yes it is possible. Can occur if the tolerance level is too high.
         # so here tolerance options can be adjusted
       }
-      }else{
+    }else{
       # opt_output$satus < 0
       # Algorithm has failed
       validResult <- FALSE
@@ -1304,8 +1302,8 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
 
       }else{
         cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",
-                 single_optim_details_df$PortfTEDev,
-                 " and the resulting weights are:", sep="\n")
+            single_optim_details_df$PortfTEDev,
+            " and the resulting weights are:", sep="\n")
 
         print(data.frame(conviction = targ$conviction,
                          rw = rw,
@@ -1491,7 +1489,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # soft leverage constrained: depends on Cash- and LeverageTolerance, needed in Settings to filter out algos that do not work!
       all_possible_settings_df$SoftNetInvConstraint <- ifelse(all_possible_settings_df$LeverageTolerance != 0 |
-                                                              all_possible_settings_df$CashTolerance != 0,
+                                                                all_possible_settings_df$CashTolerance != 0,
                                                               TRUE, FALSE)
 
       # Available algorithms
@@ -1501,7 +1499,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
       # Soft leverage constrained does not work with Lagrangian optimizer (as Lagrangian uses an equality constraint!)
       # find infeasible combinations
       ind_to_delete <- which(all_possible_settings_df$algo %in% algo_lagrange &
-                             all_possible_settings_df$SoftNetInvConstraint == TRUE)
+                               all_possible_settings_df$SoftNetInvConstraint == TRUE)
 
       if (length(ind_to_delete) > 0){
         # it means that there is at least one infeasible combination
@@ -1519,8 +1517,8 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo
       ind_to_delete <- which((all_possible_settings_df$algo %in% algo_gradient |
-                              all_possible_settings_df$SoftNetInvConstraint |
-                              all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
+                                all_possible_settings_df$SoftNetInvConstraint |
+                                all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
 
       if (length(ind_to_delete) > 0){
 
@@ -1537,7 +1535,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint == TRUE
       ind_to_delete <- which((all_possible_settings_df$NetInvLambda > 0 &
-                              all_possible_settings_df$SoftNetInvConstraint == FALSE))
+                                all_possible_settings_df$SoftNetInvConstraint == FALSE))
 
       if (length(ind_to_delete) > 0){
 
@@ -1570,8 +1568,8 @@ get_default_CovMaID <- function(Portfolioname){
   stopifnot(class(Portfolioname) == "character")
 
   def_cov_id_query <- paste0("select max(CovMatrixRunID) as defCovMaID
-                            from betsizing.CalculationDefaultSettings
-                            where CustomPortfolioName = '", Portfolioname, "'")
+                             from betsizing.CalculationDefaultSettings
+                             where CustomPortfolioName = '", Portfolioname, "'")
 
   # Execute Query and return the default COVID
   con <- FAFunc.GetDB()
@@ -1586,7 +1584,7 @@ get_default_CovMaID <- function(Portfolioname){
     }else{
       print(paste0("NLopt solver status: ", -22))
       print("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
-           "was calculated yet for the given portfolio")
+            "was calculated yet for the given portfolio")
       stop("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
            "was calculated yet for the given portfolio")
     }
@@ -2209,6 +2207,7 @@ compareRCOruns <- function(setid,
   }
 }
 
+
 # wrapper to plot call draw_plot from optimization output
 plotSingleSetIDfromRCOres <- function(setid, RCOres_l, plot_type)
 {
@@ -2592,8 +2591,8 @@ draw_table <- function(setid, RCOres_l){
   union_df <- union_df[c(ind_v, all_ind_v[!all_ind_v %in% ind_v]), ,drop = FALSE]
 
   DT::datatable(data =  union_df,
-            rownames = TRUE,
-            selection = list(mode = 'multiple', selected = c(1,2,3,4,5,6)))
+                rownames = TRUE,
+                selection = list(mode = 'multiple', selected = c(1,2,3,4,5,6)))
 }
 
 writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
@@ -2700,6 +2699,7 @@ writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
     stop("writeRCOsettingsToSQL:input is not a data.frame")
   }
 }
+
 
 update_default_settings <- function(pname, setID, covID){
 
