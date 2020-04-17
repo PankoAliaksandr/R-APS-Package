@@ -14,7 +14,7 @@ load(paste(filepath,as.of," RCOresPAA.R",sep=""))
 # For now only these values make sense
 available_x_values_v <- c("setID", "TargetTE", "algo", "cov_run_id", "IndexFlex", "CashTolerance",
                           "Ix_eq_Cash" ,"SoftNetInvConstraint", "LeverageTolerance",
-                          "NetInvLambda" , "xtol_rel")
+                          "NetInvLambda")
 
 available_y_values_v <- c("TotalRBDev", "NetInvestment", "PortfTEDev",
                           "IndexPosition", "PortfBeta")
@@ -92,6 +92,85 @@ body <- dashboardBody(tabItems(
 
             tabBox(id = "weights",
                    width = 12,
+                   tabPanel(title = "Calculate",
+
+                            textOutput(outputId = "message"),
+
+                            actionButton(inputId = "run_calc",
+                                         label =  "Run Calculation",
+                                         icon = icon("refresh"),
+                                         class = "btn action-button",
+                                         width = "20%"),
+
+                            # Here initial load from DB is required to have a list of all available variants
+                            splitLayout(cellWidths = c("50%", "50%"),
+                                        column(width = 12,
+
+                                               selectInput(inputId = 'TargetTE',
+                                                           label = 'TargetTE',
+                                                           choices = c(0.007,0.013,0.001),
+                                                           selected = c(0.007,0.013,0.001),
+                                                           multiple = TRUE),
+
+                                               selectInput(inputId = 'cov_run_id',
+                                                         label = 'Covariance ID',
+                                                         choices = c(310,311,312),
+                                                         selected = c(310,311,312),
+                                                         multiple = TRUE),
+
+                                               selectInput(inputId = 'CovReturns',
+                                                         label = 'Type of Returns in Cov',
+                                                         choices = c("abs", "rel"),
+                                                         selected = c("abs"),
+                                                         multiple = TRUE),
+
+                                               selectInput(inputId = 'IndexFlex',
+                                                         label = 'Index Flexible',
+                                                         choices = c(TRUE, FALSE),
+                                                         selected = c(FALSE),
+                                                         multiple = TRUE),
+
+                                               selectInput(inputId = 'Ix_eq_Cash',
+                                                         label = 'Index = Cash',
+                                                         choices = c(TRUE, FALSE),
+                                                         selected = c(FALSE),
+                                                         multiple = TRUE),
+
+                                               numericInput(inputId = 'CashTolerance',
+                                                         label = 'Cash Tolerance',
+                                                         value = 0.05)
+
+                                               ), #end of column 1
+
+                                        column(width = 12,
+
+                                               numericInput(inputId = 'LeverageTolerance',
+                                                         label = 'Leverage Tolerance',
+                                                         value = 0.05),
+
+                                               selectInput(inputId = 'algo',
+                                                           label = 'Algorithm',
+                                                           choices = c('NLOPT_LD_SLSQP'),
+                                                           selected = c('NLOPT_LD_SLSQP'),
+                                                           multiple = TRUE),
+
+                                               numericInput(inputId = 'NetInvLambda',
+                                                         label = 'Net Investment Lambda',
+                                                         value = 100),
+
+                                               numericInput(inputId = 'LowConvictionExitInDays',
+                                                         label = 'Low Conviction Exit In Days',
+                                                         value = 100),
+
+                                               numericInput(inputId = 'ConvictionGroups',
+                                                         label = 'Conviction Groups',
+                                                         value = 1),
+
+                                               textInput(inputId = 'InputParameters',
+                                                         label = 'Excel Sheet',
+                                                         value = "Signals4R")))
+
+                            ),
                    tabPanel(title = "Comparison",
                             splitLayout(cellWidths = c("50%", "50%"),
                                         plotOutput('comparison', click = "comparison_plot_click"),
@@ -175,7 +254,6 @@ server <- function(input, output, session){
 })
 
 output$comparison <- renderPlot({
-  browser()
 
   # The output is a plot
   APS::compareRCOruns(setid = input$setid,
@@ -249,7 +327,7 @@ observeEvent(eventExpr = input$comparison_plot_click, handlerExpr =
   }
 })
 
-#output message
+# Save
 observeEvent(eventExpr = input$save,
   {
     if(input$AddSet2SQL == FALSE &&
@@ -324,6 +402,69 @@ observeEvent(eventExpr = input$save,
                ) # end shinyalert
 } # end handler
 ) # end observe event
+
+output$message <- renderText({
+  validate(
+    need(input$portfolio != "", "Fill Portfolio Name field"),
+    need(input$TargetTE != "", "Fill TargetTE field"),
+    need(input$InputParameters != "", "Fill Excel Sheet field"),
+    need(input$CovReturns != "", "Fill Type of Returns in Cov field"),
+    need(input$cov_run_id != "", "Fill Covariance ID field"),
+    need(input$IndexFlex != "", "Fill Index Flex field"),
+    need(input$Ix_eq_Cash != "", "Fill Index = Cash field"),
+    need(input$CashTolerance != "", "Fill Cash Tolerance field"),
+    need(input$LeverageTolerance != "", "Fill Leverage Tolerance field"),
+    need(input$algo != "", "Fill Algorithm field"),
+    need(input$NetInvLambda != "", "Fill Net Investment Lambda field"),
+    need(input$LowConvictionExitInDays != "", "Fill Low Conviction Exit In Days field"),
+    need(input$ConvictionGroups != "", "Fill Conviction Groups field")
+  )
+
+  "Choose Settings and Run Calculation"
+})
+
+
+# Run Calculation
+observeEvent(eventExpr = input$run_calc,
+             {
+
+               validate(
+                 need(input$portfolio != "", "Fill Portfolio Name field"),
+                 need(input$TargetTE != "", "Fill TargetTE field"),
+                 need(input$InputParameters != "", "Fill Excel Sheet field"),
+                 need(input$CovReturns != "", "Fill Type of Returns in Cov field"),
+                 need(input$cov_run_id != "", "Fill Covariance ID field"),
+                 need(input$IndexFlex != "", "Fill Index Flex field"),
+                 need(input$Ix_eq_Cash != "", "Fill Index = Cash field"),
+                 need(input$CashTolerance != "", "Fill Cash Tolerance field"),
+                 need(input$LeverageTolerance != "", "Fill Leverage Tolerance field"),
+                 need(input$algo != "", "Fill Algorithm field"),
+                 need(input$NetInvLambda != "", "Fill Net Investment Lambda field"),
+                 need(input$LowConvictionExitInDays != "", "Fill Low Conviction Exit In Days field"),
+                 need(input$ConvictionGroups != "", "Fill Conviction Groups field")
+               )
+
+               RCO_res_l <- APS::runRCOLoops(Portfolio = as.character(input$portfolio),
+                                             TargetTE = as.numeric(input$TargetTE),
+                                             Trials = 100000,
+                                             InputParameters = as.character(input$InputParameters),
+                                             CovReturns = as.character(input$CovReturns),
+                                             cov_run_id = as.character(input$cov_run_id),
+                                             IndexFlex = as.logical(input$IndexFlex),
+                                             Ix_eq_Cash = as.logical(input$Ix_eq_Cash),
+                                             CashTolerance = as.numeric(input$CashTolerance),
+                                             LeverageTolerance = as.numeric(input$LeverageTolerance),
+                                             algo = as.character(input$algo),
+                                             NetInvLambda = as.numeric(input$NetInvLambda),
+                                             LowConvictionExitInDays = as.integer(input$LowConvictionExitInDays),
+                                             ConvictionGroups = input$ConvictionGroups)
+
+               data_l <- selectedData()
+
+             }
+)# end of Run Calculation
+
+
 } # end server
 
 shinyApp(ui, server)

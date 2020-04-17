@@ -1,23 +1,21 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1585124054586.000,
-    "dirty" : true,
+    "created" : 1587055838267.000,
+    "dirty" : false,
     "encoding" : "",
     "folds" : "",
     "hash" : "0",
-    "id" : "A9285DC7",
+    "id" : "5F19CE77",
     "lastKnownWriteTime" : 23362766668628015,
-    "last_content_update" : 1587141151407,
+    "last_content_update" : 1587055838267,
     "path" : null,
     "project_path" : null,
     "properties" : {
-        "cursorPosition" : "1,64",
-        "scrollLine" : "0",
-        "tempName" : "Untitled1"
+        "context" : "package:APS:::compareRCOruns"
     },
-    "relative_order" : 5,
+    "relative_order" : 7,
     "source_on_save" : false,
     "source_window" : "",
-    "type" : "r_source"
+    "type" : "r_code_browser"
 }

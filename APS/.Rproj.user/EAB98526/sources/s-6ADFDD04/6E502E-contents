@@ -13,6 +13,7 @@
                           ShortIndexWithOptimCash,
                           InputParameters,
                           cov_run_id_v,
+                          xtol_rel,
                           IndexFlex,
                           Ix_eq_Cash,
                           NetInvLambda,

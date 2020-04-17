@@ -499,7 +499,7 @@ f.writeRCOresToSQL <- function(opt_rel_weights_v,
 # TRANSFORM FACTORS INTO NUMERICS
 f.as.numeric.factor <- function(x) {
   # check if is already numeric then do nothing
-  if (class(x) == "numeric") {
+  if (class(x) == "numeric" || class(x) == "integer") {
     return(x)
   }
   else
@@ -519,7 +519,7 @@ f.matchCOVtoTickers <- function(Tickers,cov_df) {
   #   1. f.as.numeric.factor
 
   # Return value:
-  #  covariance matrix
+  #  covariance matrix data frame
 
   if(class(cov_df) == "data.frame"){
     # Check missing tickers
@@ -949,7 +949,7 @@ OptimizationResultsCharacteristics <- function(rw, cov, lb, ub, set, rb_target){
 
 # Optimization Functions
 # RCO: Risk Contribution Optimization
-f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
+f.runRCO <- function(targ_df,set_df,cov_df, MaxAttempts = 10){
   # Description
   #   This function is the optimizer
 
@@ -967,210 +967,206 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
   #   5. library(stats)
 
   #inputs
-  #targ: table with conviction,ub,lb,tradeability and riskbudget per security
-  #set:  RCO-Optimization settings. Must be a row of data.frame
-  #COV:  Covariance matrix (must fit to tickers in targ! )
+  #targ_df: table with conviction,ub,lb,tradeability and riskbudget per security
+  #set_df:  RCO-Optimization settings. Must be a row of data.frame
+  #cov_df:  Covariance matrix (must fit to tickers in targ_df! )
+
   print("f.runRCO started")
-  #checks
-  stopifnot(all(targ$RiskBudget >= 0))#check if all risk budgets > 0
-  stopifnot(all.equal(sum(targ[,"RiskBudget"]),1))#check if defined risk budget sums up to 100%
-  stopifnot(colnames(targ) %in% c("conviction","RiskBudget","lb","ub","Ticker","tradeability"))
-  stopifnot(is.data.frame(set),nrow(set)==1)
-  set$MaxRelWeight <- f.as.numeric.factor(set$MaxRelWeight)
-  set$algo <- as.character(set$algo)
-  set$Ix_eq_Cash <- as.character(set$Ix_eq_Cash)
-  set$IndexFlex <- as.character(set$IndexFlex)
-  set$LowConvictionExitInDays <- f.as.numeric.factor(set$LowConvictionExitInDays)
-  set$ConvictionGroups <- f.as.numeric.factor(set$ConvictionGroups)
-  set$CashTolerance <- f.as.numeric.factor(set$CashTolerance)
-  set$LeverageTolerance <- f.as.numeric.factor(set$LeverageTolerance)
-  set$NetInvLambda <- f.as.numeric.factor(set$NetInvLambda)
-  set$TargetTE <- f.as.numeric.factor(set$TargetTE)
-  set$ShortIndexWithOptimCash <- as.character(set$ShortIndexWithOptimCash)
-  set$SoftNetInvConstraint <- as.logical(set$SoftNetInvConstraint)
-  set$Trials <- f.as.numeric.factor(set$Trials)
-  set$xtol_rel <- f.as.numeric.factor(set$xtol_rel)
-  print("here further checks if risk budgets are reasonably distributed would be useful!")
-  #all risk budgets positive
-  #range of individual risks, outliers
 
-  #define target
-  sec_nr <- nrow(targ)
-  rw <- rep(0,times=sec_nr) #relative weights
+  targ_req_col_names_v <- c("conviction","RiskBudget","lb","ub","tradeability")
 
-  cov <- f.matchCOVtoTickers(Tickers = rownames(targ), cov_df = cov)
+  set_req_col_names_v <- c("MaxRelWeight", "algo", "Ix_eq_Cash", "IndexFlex", "LowConvictionExitInDays",
+                           "ConvictionGroups", "CashTolerance", "LeverageTolerance", "NetInvLambda",
+                           "TargetTE","ShortIndexWithOptimCash", "SoftNetInvConstraint", "Trials")
 
-  if(grepl("Crncy",rownames(targ)[1]))    #turn sign of bm-index to reflect a long index position (needed for sum to 0 constraint!)
-  {
-    cov[1,] <- -1*cov[1,]
-    cov[,1] <- -1*cov[,1]
-    print("The sign of the first row in the Covariance Matrix was switched, Crncy-tickers are supposed to reflect negative index performance ")
-  }
+  if(is.data.frame(targ_df) == TRUE &&
+     is.data.frame(set_df) == TRUE &&
+     is.data.frame(cov_df) == TRUE &&
+     nrow(set_df) == 1 &&
+     all(targ_req_col_names_v %in% colnames(targ_df)) == TRUE &&
+     all(set_req_col_names_v %in% colnames(set_df)) == TRUE){
 
-  # #check for invertability of cov
-  # ipak("matrixcalc")
-  # print(paste("the cov is invertible is", is.singular.matrix(as.matrix(cov) )))
+    # Input structure is correct
+
+    # Further core assumptions:
+    # 1. Risk budget cannot be negative
+    # 2. Sum of RB must be 1
+    # 3. Here must be only tickers with non-zero convictions
+    if(all(targ_df$RiskBudget >= 0) &&
+       all.equal(sum(targ_df[,"RiskBudget"]),1) &&
+       nrow(targ_df[targ_df$conviction == 0,]) == 0){
+
+      # Risk budget input is correct
+
+      # Convert to required data type
+      set_df$MaxRelWeight <- f.as.numeric.factor(set_df$MaxRelWeight)
+      set_df$algo <- as.character(set_df$algo)
+      set_df$Ix_eq_Cash <- as.character(set_df$Ix_eq_Cash)
+      set_df$IndexFlex <- as.character(set_df$IndexFlex)
+      set_df$LowConvictionExitInDays <- f.as.numeric.factor(set_df$LowConvictionExitInDays)
+      set_df$ConvictionGroups <- f.as.numeric.factor(set_df$ConvictionGroups)
+      set_df$CashTolerance <- f.as.numeric.factor(set_df$CashTolerance)
+      set_df$LeverageTolerance <- f.as.numeric.factor(set_df$LeverageTolerance)
+      set_df$NetInvLambda <- f.as.numeric.factor(set_df$NetInvLambda)
+      set_df$TargetTE <- f.as.numeric.factor(set_df$TargetTE)
+      set_df$ShortIndexWithOptimCash <- as.character(set_df$ShortIndexWithOptimCash)
+      set_df$SoftNetInvConstraint <- as.logical(set_df$SoftNetInvConstraint)
+      set_df$Trials <- f.as.numeric.factor(set_df$Trials)
+
+      print("here further checks if risk budgets are reasonably distributed would be useful!")
+      #all risk budgets positive
+      #range of individual risks, outliers
+
+      #define target
+      sec_nr <- nrow(targ_df)
+      rw <- rep(0,times=sec_nr) #relative weights
+
+      cov_df <- f.matchCOVtoTickers(Tickers = rownames(targ_df), cov_df = cov_df)
+
+      if(grepl("Crncy",rownames(targ_df)[1]))    #turn sign of bm-index to reflect a long index position (needed for sum to 0 constraint!)
+      {
+        cov_df[1,] <- -1*cov_df[1,]
+        cov_df[,1] <- -1*cov_df[,1]
+        print("The sign of the first row in the Covariance Matrix was switched, Crncy-tickers are supposed to reflect negative index performance ")
+      }
+
+      # #check for invertability of cov
+      # ipak("matrixcalc")
+      # print(paste("the cov is invertible is", is.singular.matrix(as.matrix(cov) )))
 
 
-  # get the target function and nlcon according to Settings
-  optFun <-  f.setOptfunctions(set)
+      # get the target function and nlcon according to Settings
+      optFun <-  f.setOptfunctions(set_df)
 
-  #save actual index weight before adj. lower bounds
-  w_range <- f.getWeightRange(lb = targ$lb,
-                              ub = targ$ub,
-                              conviction = targ$conviction,
-                              tradeability = targ$tradeability,
-                              MaxRelWeight = set$MaxRelWeight,
-                              LowConvictionExitInDays = set$LowConvictionExitInDays,
-                              ConvictionGroups = set$ConvictionGroups)
+      #save actual index weight before adj. lower bounds
+      w_range <- f.getWeightRange(lb = targ_df$lb,
+                                  ub = targ_df$ub,
+                                  conviction = targ_df$conviction,
+                                  tradeability = targ_df$tradeability,
+                                  MaxRelWeight = set_df$MaxRelWeight,
+                                  LowConvictionExitInDays = set_df$LowConvictionExitInDays,
+                                  ConvictionGroups = set_df$ConvictionGroups)
 
-  targ$lb. <- w_range$w_min
-  targ$ub. <- w_range$w_max
+      targ_df$lb. <- w_range$w_min
+      targ_df$ub. <- w_range$w_max
 
-  #option settings
-  local_opts <- list( "algorithm" = "NLOPT_LD_SLSQP",
-                      "xtol_rel" = 10 ^ -13 )
+      #option settings
+      local_opts <- list( "algorithm" = "NLOPT_LD_SLSQP",
+                          "xtol_rel" = 10 ^ -13 )
 
-  # Tolerance Options: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/
-  # ftol_rel - relative change in target function value ( better to use if f.val != 0)
-  # ftol_abs - absolute change in target tunction value (use if the value is close to 0)
-  # xtol_rel - relative change in solution value ( better to use if val != 0)
-  # xtol_abs - absolute change in solution value (use if the value is close to 0)
+      # Tolerance Options: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/
+      # ftol_rel - relative change in target function value ( better to use if f.val != 0)
+      # ftol_abs - absolute change in target tunction value (use if the value is close to 0)
+      # xtol_rel - relative change in solution value ( better to use if val != 0)
+      # xtol_abs - absolute change in solution value (use if the value is close to 0)
 
-  opts <- list("algorithm" = as.character(set$algo),
-               "maxeval" = as.numeric(set$Trials),
-               "print_level" = 0,
-               "xtol_rel" = 10 ^ -13, # set$xtol_rel,
-               "xtol_abs" = 10 ^ -13, # 10^-7
-               local_opts = local_opts)#,check_derivatives=TRUE)      #algortihms tried: "NLOPT_GN_ISRES",
-  #algorithms used and no result:NLOPT_LN_AUGLAG,NLOPT_GN_DIRECT_L_RAND; algorithms to try: NLOPT_GNL_DIRECT_NOSCAL, NLOPT_GN_DIRECT_L_NOSCAL, and NLOPT_GN_DIRECT_L_RAND_NOSCAL,NLOPT_GN_ORIG_DIRECT and NLOPT_GN_ORIG_DIRECT_L,
+      opts <- list("algorithm" = as.character(set_df$algo),
+                   "maxeval" = as.numeric(set_df$Trials),
+                   "print_level" = 0,
+                   "xtol_rel" = 10 ^ -13, # set_df$xtol_rel,
+                   "xtol_abs" = 10 ^ -13, # 10^-7
+                   local_opts = local_opts)#,check_derivatives=TRUE)      #algortihms tried: "NLOPT_GN_ISRES",
+      #algorithms used and no result:NLOPT_LN_AUGLAG,NLOPT_GN_DIRECT_L_RAND; algorithms to try: NLOPT_GNL_DIRECT_NOSCAL, NLOPT_GN_DIRECT_L_NOSCAL, and NLOPT_GN_DIRECT_L_RAND_NOSCAL,NLOPT_GN_ORIG_DIRECT and NLOPT_GN_ORIG_DIRECT_L,
 
-  # direction of conviction (where active).
-  # The sign shows short or long. Weight are relative to BM
-  dir <- sign(targ$conviction)
+      # direction of conviction (where active).
+      # The sign shows short or long. Weight are relative to BM
+      dir <- sign(targ_df$conviction)
 
-  # assert that TickDet still fits COV!
-  stopifnot(rownames(targ) == as.character(row.names(cov)))
+      # assert that TickDet still fits COV!
+      stopifnot(rownames(targ_df) == as.character(row.names(cov_df)))
 
-  # print(paste("Cash treated as index asset with risk budget ",round(targ$RiskBudget[1]*100,2), "% and direction ",sign(targ$conviction[1])),sep="")
+      # print(paste("Cash treated as index asset with risk budget ",round(targ_df$RiskBudget[1]*100,2), "% and direction ",sign(targ_df$conviction[1])),sep="")
 
-  x0 <- pmax(pmin(targ$ub., targ$RiskBudget * dir), targ$lb.)
+      x0 <- pmax(pmin(targ_df$ub., targ_df$RiskBudget * dir), targ_df$lb.)
 
-  # define desired bet directions
-  # A is a parameter in optimization function and inequality constraints
-  A <- -diag(dir)
-  #lb_reset=rep(-10,nrow(targ))#lower bounds are seperately specified in side constraint! -> set to very low value for the function!
+      # define desired bet directions
+      # A is a parameter in optimization function and inequality constraints
+      A <- -diag(dir)
+      #lb_reset=rep(-10,nrow(targ_df))#lower bounds are seperately specified in side constraint! -> set to very low value for the function!
 
-  # ipak("nloptr")
+      # ipak("nloptr")
 
-  # Set up param to enter the loop
-  runAnotherOptAttempt <- TRUE
-  attempt <- 1
-  while(runAnotherOptAttempt)
-  {
-    print(paste("start  attempt:",attempt,"with nloptr"))
+      # Set up param to enter the loop
+      runAnotherOptAttempt <- TRUE
+      attempt <- 1
+      while(runAnotherOptAttempt)
+      {
+        print(paste("start  attempt:",attempt,"with nloptr"))
 
-    if(set$SoftNetInvConstraint){
-      calctime <- system.time(opt_output <-
-                                nloptr::nloptr(x0 = as.matrix(x0), # nloptr param: algorithm starting point
-                                               eval_f = optFun$ftarget, # nloptr param: optimization  target function
-                                               #eval_grad_f = fgrad,
-                                               lb = as.matrix(targ$lb.), # nloptr param: solution lower bound
-                                               ub = as.matrix(targ$ub.), # nloptr param: solution upper bound
-                                               # eval_g_eq = nlcon_eq,   #nlcon_eq not required
-                                               eval_g_ineq = optFun$nlcon_ineq, # nloptr param: constraints function
-                                               opts = opts, # nloptr param: optimization settings
-                                               target_te = as.matrix(set$TargetTE), # opt. f. and costr. f. param
-                                               A = A, # opt. f. and costr. f. param
-                                               CashTolerance = set$CashTolerance, # opt. f. and costr. f. param
-                                               LeverageTolerance = set$LeverageTolerance, # opt. f. and costr. f. param
-                                               COVAR = as.matrix(cov), # costr. f. param
-                                               rb_a = as.matrix(targ$RiskBudget), # opt. f. and costr. f. param
-                                               NetInvLambda = set$NetInvLambda # opt. f. and costr. f. param
-                                ))["elapsed"]
-    }else{
-      #nlcon_eq required!
-      calctime <- system.time(opt_output <-
-                                nloptr::nloptr(x0=as.matrix(x0),
-                                               eval_f = optFun$ftarget,
-                                               #eval_grad_f = fgrad,
-                                               lb = as.matrix(targ$lb.),
-                                               ub = as.matrix(targ$ub.),
-                                               eval_g_eq = optFun$nlcon_eq, #nlcon_eq required!
-                                               eval_g_ineq = optFun$nlcon_ineq,
-                                               opts = opts,
-                                               target_te = as.matrix(set$TargetTE),
-                                               A = A,
-                                               CashTolerance = set$CashTolerance,
-                                               LeverageTolerance = set$LeverageTolerance,
-                                               COVAR = as.matrix(cov),
-                                               rb_a = as.matrix(targ$RiskBudget),
-                                               NetInvLambda = set$NetInvLambda
-                                ))["elapsed"]
-    }
-
-    # check optimization quality
-
-    # initialize
-    validResult <- FALSE
-    runAnotherOptAttempt <- FALSE
-
-    # Successful termination (positive return values):
-    # NLopt solver status: 1 (Generic success return value)
-    # NLopt solver status: 2 (Optimization stopped because stopval (above) was reached)
-    # NLopt solver status: 3 (Optimization stopped because ftol_rel or ftol_abs (above) was reached)
-    # NLopt solver status: 4 (Optimization stopped because xtol_rel or xtol_abs (above) was reached)
-    # NLopt solver status: 5 (Optimization stopped because maxeval (above) was reached)
-    # NLopt solver status: 6 (Optimization stopped because maxtime was reached)
-
-    # Error codes (negative return values):
-    # NLopt solver status: -1 (Generic failure code)
-    # NLopt solver status: -2 (Invalid arguments)
-    # NLopt solver status: -3 (Ran out of memory)
-    # NLopt solver status: -4 (Roundoff errors led to a breakdown of the optimization algorithm)
-
-    if(opt_output$status >= 0){
-      # Algorithm has not failed, however not all constraints have been used
-
-      # check direction constraint:
-      # The direction constraint means if conviction is negative
-      # the optimal weight (relative to BM) must be also negative
-      # if the conviction is positive the optimal weight must be also positive
-      # This means that conviction * opt. weight must always be non-negative
-
-      check_sign_v <- sign(targ$conviction) * sign(opt_output$solution)
-
-      # injuries <- -A %*% opt_output$solution < 0
-      if(all(check_sign_v >= 0)){
-        if(all(check_sign_v > 0)){
-          # Valid: convictions and optimal weights have the same sign
-
-          if(is.finite(opt_output$objective)){
-            # Valid: Objective function has finite value
-            # Actually, means that weights != 0 (x=0 -> log(x) = -Inf), must be always true here
-
-            # Success: We do not need another attempt: default is FALSE
-            validResult <- TRUE
-
-          }else{
-            # Objective function has Infinite value
-            validResult <- FALSE
-            runAnotherOptAttempt <- FALSE # original, but I'm not sure
-            # TODO do we need another attempt here?
-            # Is it possible that target function will not be Inf next time?
-          }
+        if(set_df$SoftNetInvConstraint){
+          calctime <- system.time(opt_output <-
+                                    nloptr::nloptr(x0 = as.matrix(x0), # nloptr param: algorithm starting point
+                                                   eval_f = optFun$ftarget, # nloptr param: optimization  target function
+                                                   #eval_grad_f = fgrad,
+                                                   lb = as.matrix(targ_df$lb.), # nloptr param: solution lower bound
+                                                   ub = as.matrix(targ_df$ub.), # nloptr param: solution upper bound
+                                                   # eval_g_eq = nlcon_eq,   #nlcon_eq not required
+                                                   eval_g_ineq = optFun$nlcon_ineq, # nloptr param: constraints function
+                                                   opts = opts, # nloptr param: optimization settings
+                                                   target_te = as.matrix(set_df$TargetTE), # opt. f. and costr. f. param
+                                                   A = A, # opt. f. and costr. f. param
+                                                   CashTolerance = set_df$CashTolerance, # opt. f. and costr. f. param
+                                                   LeverageTolerance = set_df$LeverageTolerance, # opt. f. and costr. f. param
+                                                   COVAR = as.matrix(cov_df), # costr. f. param
+                                                   rb_a = as.matrix(targ_df$RiskBudget), # opt. f. and costr. f. param
+                                                   NetInvLambda = set_df$NetInvLambda # opt. f. and costr. f. param
+                                    ))["elapsed"]
         }else{
-          # Some convictions or optimal weights are 0
-          # This case can be valid only if conviction = 0 and weight = 0
-          # Actually, here convictions are not supposed to be = 0, but still...
-          ind_0_conv <- which(targ$conviction) == 0
-          ind_0_weight <- which(opt_output$solution) == 0
+          #nlcon_eq required!
+          calctime <- system.time(opt_output <-
+                                    nloptr::nloptr(x0=as.matrix(x0),
+                                                   eval_f = optFun$ftarget,
+                                                   #eval_grad_f = fgrad,
+                                                   lb = as.matrix(targ_df$lb.),
+                                                   ub = as.matrix(targ_df$ub.),
+                                                   eval_g_eq = optFun$nlcon_eq, #nlcon_eq required!
+                                                   eval_g_ineq = optFun$nlcon_ineq,
+                                                   opts = opts,
+                                                   target_te = as.matrix(set_df$TargetTE),
+                                                   A = A,
+                                                   CashTolerance = set_df$CashTolerance,
+                                                   LeverageTolerance = set_df$LeverageTolerance,
+                                                   COVAR = as.matrix(cov_df),
+                                                   rb_a = as.matrix(targ_df$RiskBudget),
+                                                   NetInvLambda = set_df$NetInvLambda
+                                    ))["elapsed"]
+        }
 
-          # at least one is not empty here
-          if(length(ind_0_conv) == length(ind_0_weight) &&
-             all(ind_0_conv == ind_0_weight)){
-            # Valid: 0 weights correspond to 0 convictions
+        # check optimization quality
 
+        # initialize
+        validResult <- FALSE
+        runAnotherOptAttempt <- FALSE
+
+        # Successful termination (positive return values):
+        # NLopt solver status: 1 (Generic success return value)
+        # NLopt solver status: 2 (Optimization stopped because stopval (above) was reached)
+        # NLopt solver status: 3 (Optimization stopped because ftol_rel or ftol_abs (above) was reached)
+        # NLopt solver status: 4 (Optimization stopped because xtol_rel or xtol_abs (above) was reached)
+        # NLopt solver status: 5 (Optimization stopped because maxeval (above) was reached)
+        # NLopt solver status: 6 (Optimization stopped because maxtime was reached)
+
+        # Error codes (negative return values):
+        # NLopt solver status: -1 (Generic failure code)
+        # NLopt solver status: -2 (Invalid arguments)
+        # NLopt solver status: -3 (Ran out of memory)
+        # NLopt solver status: -4 (Roundoff errors led to a breakdown of the optimization algorithm)
+
+        if(opt_output$status >= 0){
+          # Algorithm has not failed, however not all constraints have been used
+
+          # check direction constraint:
+          # The direction constraint means if conviction is negative
+          # the optimal weight (relative to BM) must be also negative
+          # if the conviction is positive the optimal weight must be also positive
+          # This means that conviction * opt. weight must always be non-negative
+
+          check_sign_v <- sign(targ_df$conviction) * sign(opt_output$solution)
+
+          # injuries <- -A %*% opt_output$solution < 0
+          if(all(check_sign_v > 0)){
+
+            # Valid: convictions and optimal weights have the same sign
             if(is.finite(opt_output$objective)){
               # Valid: Objective function has finite value
               # Actually, means that weights != 0 (x=0 -> log(x) = -Inf), must be always true here
@@ -1181,143 +1177,140 @@ f.runRCO <- function(targ,set,cov, MaxAttempts = 10){
             }else{
               # Objective function has Infinite value
               validResult <- FALSE
-              runAnotherOptAttempt <- FALSE # original, but I'm not sure
-              # TODO do we need another attempt here?
-              # Is it possible that target function will not be Inf next time?
+              runAnotherOptAttempt <- FALSE
             }
           }else{
-            # There are zeroes but they are not at the same places
-            # Invalid: conviction and weights are inconsistent
+            # There are some convictions and optimal weights with different signs
+            # including case conviction is not zero when weight is zero
+            # Invalid: Conviction and weights are not consistent
             validResult <- FALSE
             runAnotherOptAttempt <- FALSE # original, but I'm not sure
             # TODO do we need another attempt here?
             # Is it possible that convictions and weights will be consistent next time?
+            # yes it is possible. Can occur if the tolerance level is too high.
+            # so here tolerance options can be adjusted
+          }
+        }else{
+          # opt_output$satus < 0
+          # Algorithm has failed
+          validResult <- FALSE
+          # TODO do we need another attempt here?
+          # Is it possible that status will be positive next time?
+
+          if(opt_output$status == -4 || opt_output$status == -1 ){
+
+            # set loop control variable
+            runAnotherOptAttempt <- ifelse(attempt <= MaxAttempts, TRUE, FALSE)
+
+            # Update required accuracy
+            # TODO check if this is right variable to change. maybe  opts$tol.. is required instead
+            set_df$TargetTE <- set_df$TargetTE + (stats::runif(1) - 0.5) * 10 ^ -6
+
+            print(paste("The ", attempt - 1, ". try resulted in Error -4 or -1!",
+                        ifelse(runAnotherOptAttempt,paste("Execute a ",attempt,". time with a slightly different TE-target of: ", set_df$TargetTE),
+                               paste("No results found after attempt",attempt))))
+          }else{
+            # opt_output$status != -4,-1 but negative
+            runAnotherOptAttempt <- FALSE
           }
         }
 
-      }else{
-        # There are some convictions and optimal weights with different signs
-        # Invalid: Conviction and weights are not consistent
-        validResult <- FALSE
-        runAnotherOptAttempt <- FALSE # original, but I'm not sure
-        # TODO do we need another attempt here?
-        # Is it possible that convictions and weights will be consistent next time?
-        # yes it is possible. Can occur if the tolerance level is too high.
-        # so here tolerance options can be adjusted
+        attempt <- attempt + 1
+
+        print(paste0("NLopt solver status: ", opt_output$status))
+        print(paste0("NLopt solver status message: ", opt_output$message))
+
+        if(validResult == FALSE){
+          print("optimization failed or direction constrained violated or target function Inf ,invalid result. Solution reset to NA") #no stop as loop should continue!!!
+
+          # initialize optimal solution (weights)
+          rc <- rw <- pw <- rep(NA, length(rw))
+          names(rw) <- colnames(cov_df)
+
+          # store results in optim_details
+          optim_details <- c(Calculated = as.character(Sys.time()),
+                             NA,
+                             NA,
+                             NA,
+                             NA,
+                             NA,
+                             opt_output$objective,
+                             opt_output$iterations,
+                             calctime,
+                             NA,
+                             validResult = validResult)
+
+        }else{
+          # Result is valid, new attempt is not required calculation:
+          # get optimization results characteristics and store the results
+
+          iterations <- opt_output$iterations
+          # Prepare optimal relative weights with names
+          rw <-  opt_output$solution
+          names(rw) <- colnames(cov_df)
+
+          # Absolute weights. The formula is correct, since lb = -bm
+          pw <- rw - targ_df$lb    #portfolioweights. checks needed???
+          orc <- OptimizationResultsCharacteristics(rw = rw,
+                                                    cov = cov_df,
+                                                    lb = targ_df$lb,
+                                                    ub = targ_df$ub,
+                                                    set = set_df,
+                                                    rb_target = targ_df$RiskBudget) #rw=rw;COV=COV;lb=targ_df$lb.;ub=targ_df$ub;set=set
+          rc <- orc$rc
+
+          # store results in data frame as row
+          # (each optimization iteration will be stored as row)
+          single_optim_details_df <- data.frame("Calculated" = as.character(Sys.time()),
+                                                "PortfTEDev" = orc$te - set_df$TargetTE,
+                                                "HitsPct" = orc$const_hit_pct,
+                                                "NetInvestment" = orc$NetInvestment,
+                                                "PortfBeta" = orc$p.beta,
+                                                "IndexPosition" = orc$IndexPosition,
+                                                "ObjFunValue" = opt_output$objective,
+                                                "Iterations" = iterations,
+                                                "Calctime" = calctime,
+                                                "TotalRBDev" = orc$TotalRBDev,
+                                                "ValidResult" = validResult,
+                                                row.names = NULL,
+                                                stringsAsFactors = FALSE)
+
+          # TODO introduce parameter here
+          TEdeviationTolerance <- 0.0001
+
+          if(abs(single_optim_details_df$PortfTEDev) < TEdeviationTolerance)
+          {
+            cat(paste("The Risk-Contribution-Optimization was successful on attempt ",attempt-1),
+                " and the resulting weights are:", sep="\n")
+
+            print(data.frame(conviction = targ_df$conviction,
+                             rw = rw,
+                             RiskContr = rc))
+
+          }else{
+            cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",
+                single_optim_details_df$PortfTEDev,
+                " and the resulting weights are:", sep="\n")
+
+            print(data.frame(conviction = targ_df$conviction,
+                             rw = rw,
+                             RiskContr = rc))
+          }
+        }
       }
-      }else{
-      # opt_output$satus < 0
-      # Algorithm has failed
-      validResult <- FALSE
-      # TODO do we need another attempt here?
-      # Is it possible that status will be positive next time?
 
-      if(opt_output$status == -4 || opt_output$status == -1 ){
-
-        # set loop control variable
-        runAnotherOptAttempt <- ifelse(attempt <= MaxAttempts, TRUE, FALSE)
-
-        # Update required accuracy
-        # TODO check if this is right variable to change. maybe  opts$tol.. is required instead
-        set$TargetTE <- set$TargetTE + (stats::runif(1) - 0.5) * 10 ^ -6
-
-        print(paste("The ", attempt - 1, ". try resulted in Error -4 or -1!",
-                    ifelse(runAnotherOptAttempt,paste("Execute a ",attempt,". time with a slightly different TE-target of: ", set$TargetTE),
-                           paste("No results found after attempt",attempt))))
-      }else{
-        # opt_output$status != -4,-1 but negative
-        runAnotherOptAttempt <- FALSE
-      }
-    }
-
-    attempt <- attempt + 1
-
-    print(paste0("NLopt solver status: ", opt_output$status))
-    print(paste0("NLopt solver status message: ", opt_output$message))
-
-    if(validResult == FALSE){
-      print("optimization failed or direction constrained violated or target function Inf ,invalid result. Solution reset to NA") #no stop as loop should continue!!!
-
-      # initialize optimal solution (weights)
-      rc <- rw <- pw <- rep(NA, length(rw))
-      names(rw) <- colnames(cov)
-
-      # store results in optim_details
-      optim_details <- c(Calculated = as.character(Sys.time()),
-                         NA,
-                         NA,
-                         NA,
-                         NA,
-                         NA,
-                         opt_output$objective,
-                         opt_output$iterations,
-                         calctime,
-                         NA,
-                         validResult = validResult)
-
+      return(list(rw = rw,
+                  pw = pw,
+                  optim_details = single_optim_details_df,
+                  RiskContribution = rc))
     }else{
-      # Result is valid, new attempt is not required calculation:
-      # get optimization results characteristics and store the results
-
-      iterations <- opt_output$iterations
-      # Prepare optimal relative weights with names
-      rw <-  opt_output$solution
-      names(rw) <- colnames(cov)
-
-      # Absolute weights. The formula is correct, since lb = -bm
-      pw <- rw - targ$lb    #portfolioweights. checks needed???
-      orc <- OptimizationResultsCharacteristics(rw = rw,
-                                                cov = cov,
-                                                lb = targ$lb,
-                                                ub = targ$ub,
-                                                set = set,
-                                                rb_target = targ$RiskBudget) #rw=rw;COV=COV;lb=targ$lb.;ub=targ$ub;set=set
-      rc <- orc$rc
-
-      # store results in data frame as row
-      # (each optimization iteration will be stored as row)
-      single_optim_details_df <- data.frame("Calculated" = as.character(Sys.time()),
-                                            "PortfTEDev" = orc$te - set$TargetTE,
-                                            "HitsPct" = orc$const_hit_pct,
-                                            "NetInvestment" = orc$NetInvestment,
-                                            "PortfBeta" = orc$p.beta,
-                                            "IndexPosition" = orc$IndexPosition,
-                                            "ObjFunValue" = opt_output$objective,
-                                            "Iterations" = iterations,
-                                            "Calctime" = calctime,
-                                            "TotalRBDev" = orc$TotalRBDev,
-                                            "ValidResult" = validResult,
-                                            row.names = NULL,
-                                            stringsAsFactors = FALSE)
-
-      # TODO introduce parameter here
-      TEdeviationTolerance <- 0.0001
-
-      if(abs(single_optim_details_df$PortfTEDev) < TEdeviationTolerance)
-      {
-        cat(paste("The Risk-Contribution-Optimization was successful on attempt ",attempt-1),
-            " and the resulting weights are:", sep="\n")
-
-        print(data.frame(conviction = targ$conviction,
-                         rw = rw,
-                         RiskContr = rc))
-
-      }else{
-        cat("The Risk-Contribution-Optimization yielded a result but the Deviation to Target-Tracking Error was:",
-                 single_optim_details_df$PortfTEDev,
-                 " and the resulting weights are:", sep="\n")
-
-        print(data.frame(conviction = targ$conviction,
-                         rw = rw,
-                         RiskContr = rc))
-      }
+      print("f.runRCO: Risk budget input is not correct or some convictions are 0")
+      stop("f.runRCO: Risk budget input is not correct or some convictions are 0")
     }
+  }else{
+    print("f.runRCO: input parameters structure is not correct")
+    stop("f.runRCO: input parameters structure is not correct")
   }
-
-  return(list(rw = rw,
-              pw = pw,
-              optim_details = single_optim_details_df,
-              RiskContribution = rc))
 }
 
 runRCOFromAPS <- function(portfolioName,
@@ -1367,10 +1360,6 @@ runRCOFromAPS <- function(portfolioName,
     print("BAD: target table is empty")
   }
 
-  # check if boundaries are compatible with the direction convictions: ADDED!
-  # TODO simplify it using "all"
-
-
   # Weight and convictions must have the same sign.
   # Weights have lower and upper bounds
   # stopifnot(any( (target_table$lb>=0 & target_table$conviction<0) | (target_table$ub<=0 & target_table$conviction>0) )  == FALSE )
@@ -1400,10 +1389,9 @@ runRCOFromAPS <- function(portfolioName,
     tryCatch(
       { # Try section
 
-        # TODO first copy the function here, second use APS package
-        optimization_result_l <- f.runRCO(targ = target_table_signal,
-                                          set = RCO_settings_df,
-                                          cov = covMa)
+        optimization_result_l <- f.runRCO(targ_df = target_table_signal,
+                                          set_df = RCO_settings_df,
+                                          cov_df = covMa)
 
       }, error = function(e){
         print(paste0("runRCO stopped with an error: ", e))
@@ -1694,7 +1682,6 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
                         ShortIndexWithOptimCash = 0,           #set 0 or 1 to implement the optimized Cash position by shorting the ind   ex via selling proportional weights in each index-member
                         InputParameters = "Signals4R_test",         #character string like fitting the variable input in the specified targ-sheet
                         cov_run_id_v = NA,                        #set specific covariance ID, -10 for testing and NA for most recent available for the chosen portfolio
-                        xtol_rel = 10 ^ -7,
                         IndexFlex = FALSE,
                         Ix_eq_Cash = FALSE,
                         NetInvLambda = 0                        #punishment factor for NetInvestments <>0
@@ -1873,7 +1860,6 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     TargetTE = TargetTE,
     MaxRelWeight = MaxRelWeight,
     Trials = Trials,
-    xtol_rel = xtol_rel,
     algo = algo,
     CashTolerance = CashTolerance,
     LeverageTolerance = LeverageTolerance,
@@ -2041,10 +2027,10 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
     # and seperate TickerInfo from its covariances
     # (necessary as target function cant handle 0-weights as it calculates ......*log(w)*....)
     sec_active <- target_settings_df$conviction != 0
-    targ_active <- target_settings_df[sec_active,]
-    cov_active <- f.matchCOVtoTickers (Tickers = row.names(targ_active), cov_df = as.data.frame(cov_ma))
+    targ_active_df <- target_settings_df[sec_active,]
+    cov_active_df <- f.matchCOVtoTickers (Tickers = row.names(targ_active_df), cov_df = as.data.frame(cov_ma))
 
-    RCOthisLoop <- f.runRCO(targ_active, set_df, cov_active)
+    RCOthisLoop <- f.runRCO(targ_active_df, set_df, cov_active_df)
 
     # store the results in Loop-Matrices (non-valid results indicated with NA)
     opt_rel_weights_ma[sec_active, k] <- RCOthisLoop$rw
@@ -2118,9 +2104,9 @@ compareRCOruns <- function(setid,
   # For now only these values make sense
   available_x_values_v <- c("setID", "TargetTE", "algo", "cov_run_id", "IndexFlex", "CashTolerance",
                             "Ix_eq_Cash" ,"SoftNetInvConstraint", "LeverageTolerance",
-                            "NetInvLambda" , "xtol_rel")
+                            "NetInvLambda")
 
-  x_short_names <- c("sID", "tTE", "alg", "cov", "iF", "CT","iEC", "SNI","LT", "NIL", "xT")
+  x_short_names <- c("sID", "tTE", "alg", "cov", "iF", "CT","iEC", "SNI","LT", "NIL")
 
   # it is used in group_by
   names(available_x_values_v) <- x_short_names
