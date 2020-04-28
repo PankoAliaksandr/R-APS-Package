@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1587398768176.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "3EF9D2F5",
+    "lastKnownWriteTime" : 1587674040,
+    "last_content_update" : 1587674040,
+    "path" : "G:/FAP/Equities/Betsizing/Code/shinyPAA/app production.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "8,14",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 8,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

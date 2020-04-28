@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1586878650478.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "32|12|35|0|\n36|18|104|0|\n105|21|223|0|\n224|22|229|0|\n230|19|232|0|\n233|14|235|0|\n236|19|239|0|\n240|10|262|0|\n263|8|265|0|\n334|28|387|2|\n398|33|408|0|\n410|31|415|0|\n417|30|424|0|\n426|25|431|0|\n433|37|439|0|\n",
+    "hash" : "3992660351",
+    "id" : "CD142F2C",
+    "lastKnownWriteTime" : 1588092384,
+    "last_content_update" : 1588092384733,
+    "path" : "G:/FAP/Equities/Betsizing/Code/shinyPAA/app.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "615,0",
+        "scrollLine" : "598"
+    },
+    "relative_order" : 5,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

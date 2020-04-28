@@ -1,0 +1,37 @@
+FAFunc.GetDB            FAFunc.GetDB
+ImplIndexPosition       ImplIndexPosition
+OptimizationResultsCharacteristics
+                        OptimizationResultsCharacteristics
+compareRCOruns          compareRCOruns
+draw_plot               draw_plot
+draw_table              draw_table
+f.as.numeric.factor     f.as.numeric.factor
+f.delete_infeasible_settings
+                        f.delete_infeasible_settings
+f.getCovFromSQL         f.getCovFromSQL
+f.getWeightRange        f.getWeightRange
+f.matchCOVtoTickers     f.matchCOVtoTickers
+f.runRCO                f.runRCO
+f.setOptfunctions       f.setOptfunctions
+f.writeOptdetails2xlsx
+                        f.writeOptdetails2xlsx
+f.writeRCOresToSQL      f.writeRCOresToSQL
+getRCOSetSettings       getRCOSetSettings
+getTargetTable          getTargetTable
+get_ap_bb_ticker_by_name
+                        get_ap_bb_ticker_by_name
+get_cov_ma              get_cov_ma
+get_default_CovMaID     get_default_CovMaID
+get_rcb                 get_rcb
+get_sh_cov_run_ids      get_sh_cov_run_ids
+get_sh_portfolio_name   get_sh_portfolio_name
+get_sh_ws               get_sh_ws
+isDate                  isDate
+mydistfun               mydistfun
+plotSingleSetIDfromRCOres
+                        plotSingleSetIDfromRCOres
+runRCOFromAPS           runRCOFromAPS
+runRCOLoops             runRCOLoops
+update_default_settings
+                        update_default_settings
+writeRCOsettingsToSQL   writeRCOsettingsToSQL

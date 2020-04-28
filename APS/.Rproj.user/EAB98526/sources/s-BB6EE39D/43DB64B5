@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1584460304403.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "2917|50|2952|0|\n2954|39|2988|0|\n",
+    "hash" : "3120069041",
+    "id" : "43DB64B5",
+    "lastKnownWriteTime" : 1588092335,
+    "last_content_update" : 1588092335425,
+    "path" : "C:/Projects/Rpackage/APS/R/APS_functions.R",
+    "project_path" : "R/APS_functions.R",
+    "properties" : {
+        "cursorPosition" : "2916,0",
+        "scrollLine" : "2901"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

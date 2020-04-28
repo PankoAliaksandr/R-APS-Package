@@ -1,0 +1,15 @@
+Package: APS
+Type: Package
+Title: What the Package Does (Title Case)
+Version: 0.1.0
+Author: Aliaksandr Panko
+Maintainer: Me <panko.aliaksandr@gmail.com>
+Description: Analyst Portfolio Synchronizer functions. These functions are used with C# to rebalance portfolio weights.
+License: CC0
+Encoding: UTF-8
+LazyData: true
+Imports: RODBC, nloptr, reshape, dplyr, stats, gridExtra, xlsx,
+        ggplot2, graphics, DT, readxl
+RoxygenNote: 7.0.2
+NeedsCompilation: no
+Packaged: 2020-04-28 15:59:36 UTC; paa
