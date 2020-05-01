@@ -1663,11 +1663,10 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
   # Dependencies:
   # dplyr
   # reshape
-  # gridExtra
   # xlsx
 
   # Functions called:
-  # gridExtra::expand.grid
+  # expand.grid
   # f.delete_infeasible_settings
   # FAFunc.GetDB
   # xlsx::read.xlsx
@@ -1691,7 +1690,7 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
       target_settings_df <- xlsx::read.xlsx(file = paste(file_path_in, input_file, sep = "", collapse = ""),
                                             sheetName = ws_name, colIndex = c(1,2,3,4,5,6))
       # Excel can contain empty rows this produces NAs
-      target_settings_df <- na.omit(target_settings_df)
+      target_settings_df <- stats::na.omit(target_settings_df)
     },
     error = function(e){
       print(e)
@@ -2213,6 +2212,8 @@ draw_plot <- function(rw_v,
                       ShortIndexWithOptimCash = 0,
                       plot_type){
 
+  #### Internal functions definition ####
+
   #reduce to active securities again for plotting
   get_active_sec <- function(v, convictions_v){
     if((class(v) == "numeric" || class(v) == "character") &&
@@ -2277,6 +2278,245 @@ draw_plot <- function(rw_v,
     }
   }
 
+  plot_overview <- function(rb_act_v,
+                            rc_act_v,
+                            rw_act_v,
+                            convictions_act_v,
+                            setid){
+
+    all_v <- c(rb_act_v, rc_act_v)
+
+    # Add 10% to xlim and ylim to let text be inside a plot
+    range <- adjust_range(lb_change_mult = 0.1,
+                          ub_change_mult = 0.1,
+                          values_v = all_v,
+                          chart_type = 'line')
+
+    title <- paste0("Settings ID: ", setid, " Risk budget utilization (size prop to weight)")
+    graphics::plot(rb_act_v,
+                   rc_act_v,
+                   col = ifelse(sign(convictions_act_v) >= 0, "darkgreen", "red"),
+                   xlim = range,
+                   ylim = range,
+                   xlab = "risk budget",
+                   ylab = "risk contribution",
+                   pch = 20,
+                   cex = abs(rw_act_v) / mean(abs(rw_act_v)),
+                   main = title)
+
+    # Add line 45 degrees as a benchmark for the fit
+    graphics::abline(a = 0,
+                     b = 1,
+                     lty = 3,
+                     lwd = 0.25,
+                     col = "black")
+
+    graphics::legend("topleft",
+                     c("long", "short", "perfert fit"),
+                     col = c("darkgreen", "red", "black"),
+                     pch = 20,
+                     bty = "n",
+                     cex = 1)
+  }
+
+  plot_active_relative_weights <- function(rw_act_v,
+                                           tickers_act_v,
+                                           txtsize,
+                                           lb_act_v,
+                                           ub_act_v,
+                                           convictions_act_v,
+                                           setid){
+
+    title_part1 <- paste0("Settings set " ,setid, ": ")
+    # calculate active weights share
+    total_ind_dev <- sum(abs(rw_act_v))
+    title_part2 <- paste0("Sum of deviations from BM weights is ", 100*round(total_ind_dev,2)," %")
+
+    # Check if a constraint is active
+    boundary_hit_lb <- round(lb_act_v,3) == round(rw_act_v,3)
+    boundary_hit_ub <- round(ub_act_v,3) == round(rw_act_v,3)
+
+    # If lower or uppder bound is achieved set flag = TRUE
+    boundary_hit <- boundary_hit_lb | boundary_hit_ub
+
+    # create range for scales
+    range <- adjust_range(lb_change_mult = 0.2,
+                          ub_change_mult = 0.6,
+                          values_v = rw_act_v,
+                          chart_type = 'bar')
+
+    # Bar Plot: Share of active weights
+    bp.rw <- graphics::barplot(rw_act_v,
+                               beside = TRUE,
+                               names.arg = .pT(tickers_act_v),
+                               las = 2,
+                               cex.names = txtsize,
+                               main = paste0(title_part1, title_part2),
+                               col = ifelse(boundary_hit == TRUE, "red", "black"),
+                               xlab = "Tickers",
+                               ylab = "Relative Weights",
+                               ylim = range)
+
+    # Show also lower and upper bounds to make sure that optimization is valid
+    graphics::points(x = bp.rw, y = lb_act_v, pch = 20, col = "blue")
+    graphics::points(x = bp.rw, y = ub_act_v, pch = 20, col = "blue")
+
+    # Add convictions: to make sure the direction and the amplitude is feasible
+    shift <- 0.0015 * sign(rw_act_v)
+    graphics::text(x = bp.rw,
+                   y = shift + rw_act_v,
+                   labels = round(convictions_act_v,0),
+                   cex = txtsize,
+                   col = "darkgreen")
+
+    # legend: bar plot share of active weights
+    graphics::legend("topleft",
+                     c("unrestricted", "restricted", "boundary", "convictions"),
+                     col = c("black", "red", "blue", "darkgreen"),
+                     pch = c(15,15,20,17),
+                     bty = "n",
+                     cex = 1)
+
+  }
+
+  plot_risk_contributions <- function(rc_act_v,
+                                      rb_act_v,
+                                      tickers_act_v,
+                                      txtsize,
+                                      TotalRBDev,
+                                      setid){
+
+    # Convert to percentage
+    rc_act_v <- rc_act_v * 100
+    rb_act_v <- rb_act_v * 100
+    title_part1 <- paste0("Settings set ", setid, ": ")
+    title_part2 <- paste0("Sum of deviations from target RC = ",
+                          round(TotalRBDev,3),
+                          ". sum(RC) = ", sum(rc_act_v), "%")
+
+    # Check if risk budget is violated
+    rb_hits <- abs(round(rc_act_v,3)) >= abs(round(rb_act_v,3))
+
+    # get max and min values of RB and RC to create correct range for a plot
+    # Add a bit more space for text and legend
+    all_v <- c(rc_act_v, rb_act_v)
+
+    range <- adjust_range(lb_change_mult = 0.2,
+                          ub_change_mult = 0.4,
+                          values_v = all_v,
+                          chart_type = 'bar')
+
+    # Additional adjustment
+    range[1] <- range[1] - 1
+
+    # Risk Contributions Bar plot
+    # rc_act_v - risk contributions in percentage from total risk
+    x <- graphics::barplot(rc_act_v,
+                           ylim = range,
+                           ylab = "risk contribution in %",
+                           beside = TRUE,
+                           names.arg = .pT(tickers_act_v),
+                           las = 2,
+                           col = ifelse(rb_hits == TRUE, "red", "black"),
+                           cex.names = txtsize,
+                           main = paste0(title_part1, title_part2))
+
+    # Add risk budget targets
+    # rb_act_v -  target risk budget in %
+    graphics::points(x = x, y = rb_act_v, pch = 20, col = "blue")
+
+    # Add utilization percentage
+    rb_utilization <- round(((rc_act_v / rb_act_v) * 100), 0)
+    rb_utilization <- rb_utilization
+    shift <- 0.5 * sign(rc_act_v)
+    graphics::text(x,
+                   shift + rc_act_v,
+                   labels = rb_utilization,
+                   cex = txtsize,
+                   col = "darkgreen")
+
+    # legend: bar plot share of active weights
+    graphics::legend("topleft",
+                     c("unrestricted", "restricted", "target", "utilization(%)"),
+                     col = c("black", "red", "blue", "darkgreen"),
+                     pch = c(15,15,20,17),
+                     bty = "n",
+                     cex = 1)
+  }
+
+  plot_weights_dev_overview <- function(weights_ma){
+    # Description:
+    #   The function can be used to easily compare the change in
+    #     weights by runs
+
+    # Dependenies:
+    # library(ggplot2)
+    # library(reshape2)
+
+    if(is.matrix(weights_ma) && is.null(colnames(weights_ma)) == FALSE){
+
+      df <- as.data.frame(weights_ma)
+      df$tickers <- row.names(df)
+
+      df <- as.data.frame(reshape2::melt(data = df,
+                                         id.vars = 'tickers',
+                                         value.name = "WeightRel",
+                                         variable.name = c("RunID")))
+
+      ggplot2::ggplot(df,
+                      ggplot2::aes_string(x = 'tickers',
+                                          y = 'WeightRel',
+                                          fill = 'RunID')) +
+
+        ggplot2::geom_bar(stat = "identity", position = ggplot2::position_dodge()) +
+
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
+
+        ggplot2::labs(title = "Relative weights by runs")
+
+    }else{
+      print("plot_weights_dev_overview: input param has wrong type")
+      stop("plot_weights_dev_overview: input param has wrong type")
+    }
+  }
+
+  plot_rc_dev_overview <- function(rc_l){
+    # Description:
+    #   The function can be used to easily compare the change in
+    #     risk contributions by runs
+
+    # Dependenies:
+    # library(ggplot2)
+    # library(reshape2)
+
+    if(is.list(rc_l) && is.null(names(rc_l)) == FALSE){
+
+
+      df <- as.data.frame(rc_l)
+      df$tickers <- row.names(df)
+
+      df <- as.data.frame(reshape2::melt(data = df,
+                                         id.vars = 'tickers',
+                                         value.name = "RC",
+                                         variable.name = c("RunID")))
+
+      ggplot2::ggplot(df,
+                      ggplot2::aes_string(x = "tickers",
+                                          y = "RC",
+                                          fill = "RunID")) +
+
+        ggplot2::geom_bar(stat="identity") +
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
+
+        ggplot2::labs(title = "Risk Contributions by runs")
+
+    }else{
+      print("plot_rc_dev_overview: input param has wrong type")
+      stop("plot_rc_dev_overview: input param has wrong type")
+    }
+  }
+
+  #### end of internal functions definition ####
 
   # Structure validation
   names_targ_v <- c("lb", "ub", "conviction", "tradeability", "RiskBudget")
@@ -2284,8 +2524,6 @@ draw_plot <- function(rw_v,
   if(all(names_targ_v %in% colnames(targ_input_df)) == TRUE &&
      all(names_set_v %in% colnames(single_set_df)) == TRUE &&
      "TotalRBDev" %in% colnames(single_opt_det_df)){
-
-
 
     # recaclulate the effectively set boundaries
     w_range <- f.getWeightRange(targ_input_df$lb,
@@ -2295,7 +2533,6 @@ draw_plot <- function(rw_v,
                                 single_set_df$MaxRelWeight,
                                 single_set_df$LowConvictionExitInDays,
                                 single_set_df$ConvictionGroups)
-
 
     tickers_v <- rownames(targ_input_df)
     convictions_v <-  targ_input_df$conviction
@@ -2334,47 +2571,6 @@ draw_plot <- function(rw_v,
       # Optimization succeeded
       if(plot_type == "overview"){
 
-        plot_overview <- function(rb_act_v,
-                                  rc_act_v,
-                                  rw_act_v,
-                                  convictions_act_v,
-                                  setid){
-
-          all_v <- c(rb_act_v, rc_act_v)
-
-          # Add 10% to xlim and ylim to let text be inside a plot
-          range <- adjust_range(lb_change_mult = 0.1,
-                                ub_change_mult = 0.1,
-                                values_v = all_v,
-                                chart_type = 'line')
-
-          title <- paste0("Settings ID: ", setid, " Risk budget utilization (size prop to weight)")
-          graphics::plot(rb_act_v,
-                         rc_act_v,
-                         col = ifelse(sign(convictions_act_v) >= 0, "darkgreen", "red"),
-                         xlim = range,
-                         ylim = range,
-                         xlab = "risk budget",
-                         ylab = "risk contribution",
-                         pch = 20,
-                         cex = abs(rw_act_v) / mean(abs(rw_act_v)),
-                         main = title)
-
-          # Add line 45 degrees as a benchmark for the fit
-          graphics::abline(a = 0,
-                           b = 1,
-                           lty = 3,
-                           lwd = 0.25,
-                           col = "black")
-
-          graphics::legend("topleft",
-                           c("long", "short", "perfert fit"),
-                           col = c("darkgreen", "red", "black"),
-                           pch = 20,
-                           bty = "n",
-                           cex = 1)
-        }
-
         plot_overview(rb_act_v = rb_act_v,
                       rc_act_v = rc_act_v,
                       rw_act_v = rw_act_v,
@@ -2382,66 +2578,6 @@ draw_plot <- function(rw_v,
                       setid = single_set_df$setID)
       }
       else if(plot_type == "act_rel_weights"){
-
-        plot_active_relative_weights <- function(rw_act_v,
-                                                 tickers_act_v,
-                                                 txtsize,
-                                                 lb_act_v,
-                                                 ub_act_v,
-                                                 convictions_act_v,
-                                                 setid){
-
-          title_part1 <- paste0("Settings set " ,setid, ": ")
-          # calculate active weights share
-          total_ind_dev <- sum(abs(rw_act_v))
-          title_part2 <- paste0("Sum of deviations from BM weights is ", 100*round(total_ind_dev,2)," %")
-
-          # Check if a constraint is active
-          boundary_hit_lb <- round(lb_act_v,3) == round(rw_act_v,3)
-          boundary_hit_ub <- round(ub_act_v,3) == round(rw_act_v,3)
-
-          # If lower or uppder bound is achieved set flag = TRUE
-          boundary_hit <- boundary_hit_lb | boundary_hit_ub
-
-          # create range for scales
-          range <- adjust_range(lb_change_mult = 0.2,
-                                ub_change_mult = 0.6,
-                                values_v = rw_act_v,
-                                chart_type = 'bar')
-
-          # Bar Plot: Share of active weights
-          bp.rw <- graphics::barplot(rw_act_v,
-                                     beside = TRUE,
-                                     names.arg = .pT(tickers_act_v),
-                                     las = 2,
-                                     cex.names = txtsize,
-                                     main = paste0(title_part1, title_part2),
-                                     col = ifelse(boundary_hit == TRUE, "red", "black"),
-                                     xlab = "Tickers",
-                                     ylab = "Relative Weights",
-                                     ylim = range)
-
-          # Show also lower and upper bounds to make sure that optimization is valid
-          graphics::points(x = bp.rw, y = lb_act_v, pch = 20, col = "blue")
-          graphics::points(x = bp.rw, y = ub_act_v, pch = 20, col = "blue")
-
-          # Add convictions: to make sure the direction and the amplitude is feasible
-          shift <- 0.0015 * sign(rw_act_v)
-          graphics::text(x = bp.rw,
-                         y = shift + rw_act_v,
-                         labels = round(convictions_act_v,0),
-                         cex = txtsize,
-                         col = "darkgreen")
-
-          # legend: bar plot share of active weights
-          graphics::legend("topleft",
-                           c("unrestricted", "restricted", "boundary", "convictions"),
-                           col = c("black", "red", "blue", "darkgreen"),
-                           pch = c(15,15,20,17),
-                           bty = "n",
-                           cex = 1)
-
-        }
 
         plot_active_relative_weights(rw_act_v = rw_act_v,
                                      tickers_act_v = tickers_act_v,
@@ -2451,73 +2587,7 @@ draw_plot <- function(rw_v,
                                      convictions_act_v = convictions_act_v,
                                      setid = single_set_df$setID)
 
-
       }else if(plot_type == "risk_contr"){
-
-        plot_risk_contributions <- function(rc_act_v,
-                                            rb_act_v,
-                                            tickers_act_v,
-                                            txtsize,
-                                            TotalRBDev,
-                                            setid){
-
-          # Convert to percentage
-          rc_act_v <- rc_act_v * 100
-          rb_act_v <- rb_act_v * 100
-          title_part1 <- paste0("Settings set ", setid, ": ")
-          title_part2 <- paste0("Sum of deviations from target RC = ",
-                                round(TotalRBDev,3),
-                                ". sum(RC) = ", sum(rc_act_v), "%")
-
-          # Check if risk budget is violated
-          rb_hits <- abs(round(rc_act_v,3)) >= abs(round(rb_act_v,3))
-
-          # get max and min values of RB and RC to create correct range for a plot
-          # Add a bit more space for text and legend
-          all_v <- c(rc_act_v, rb_act_v)
-
-          range <- adjust_range(lb_change_mult = 0.2,
-                                ub_change_mult = 0.4,
-                                values_v = all_v,
-                                chart_type = 'bar')
-
-          # Additional adjustment
-          range[1] <- range[1] - 1
-
-          # Risk Contributions Bar plot
-          # rc_act_v - risk contributions in percentage from total risk
-          x <- graphics::barplot(rc_act_v,
-                                 ylim = range,
-                                 ylab = "risk contribution in %",
-                                 beside = TRUE,
-                                 names.arg = .pT(tickers_act_v),
-                                 las = 2,
-                                 col = ifelse(rb_hits == TRUE, "red", "black"),
-                                 cex.names = txtsize,
-                                 main = paste0(title_part1, title_part2))
-
-          # Add risk budget targets
-          # rb_act_v -  target risk budget in %
-          graphics::points(x = x, y = rb_act_v, pch = 20, col = "blue")
-
-          # Add utilization percentage
-          rb_utilization <- round(((rc_act_v / rb_act_v) * 100), 0)
-          rb_utilization <- rb_utilization
-          shift <- 0.5 * sign(rc_act_v)
-          graphics::text(x,
-                         shift + rc_act_v,
-                         labels = rb_utilization,
-                         cex = txtsize,
-                         col = "darkgreen")
-
-          # legend: bar plot share of active weights
-          graphics::legend("topleft",
-                           c("unrestricted", "restricted", "target", "utilization(%)"),
-                           col = c("black", "red", "blue", "darkgreen"),
-                           pch = c(15,15,20,17),
-                           bty = "n",
-                           cex = 1)
-        }
 
         plot_risk_contributions(rc_act_v,
                                 rb_act_v,
@@ -2525,9 +2595,6 @@ draw_plot <- function(rw_v,
                                 txtsize,
                                 single_opt_det_df$TotalRBDev,
                                 single_set_df$setID)
-
-
-
       }else{
         # plot type is not correct
         print("draw_plot: plot type is not supported")
@@ -2913,44 +2980,3 @@ get_sh_portfolio_name <- function(){
     stop("get_sh_portfolio_name: Select statement contains an error ")
   }
 }
-
-
-# f.compare_runWeights <- function(RCOres,
-#                                  colby = NA,
-#                                  showRCB = FALSE,
-#                                  whichCOV = 1){
-#
-#   w <- RCOres$RW
-#
-#
-#   if(is.na(colby))
-#   {
-#     col <- 1:nrow(w)
-#     leg <- paste("set",col,sep="")
-#   }else
-#   {
-#     settypes <- as.factor(RCOres$SET[,colby])
-#     col <- as.numeric(settypes)
-#     leg <- levels(settypes)
-#   }
-#
-#   if(showRCB)
-#   {
-#     print("ATTENTION: First Covariance taken for all runs even if several different Covariances have been used for the optimizations!!!!")
-#     cov <- as.data.frame(RCOres$COV[,,whichCOV])
-#     cov <- f.matchCOVtoTickers(colnames(w),cov)
-#     rcb <- t(apply(w,1,get_rcb,cov))
-#
-#     #add shorter names
-#     colnames(w) <- as.character(.pT(colnames(w)))
-#     colnames(rcb) <- colnames(w)
-#     bp <- barplot(rcb,beside=TRUE,las=2,col=col,main="optimized risk contributions for different settings")
-#   }else
-#   {
-#     #add shorter names
-#     colnames(w) <- as.character(.pT(colnames(w)))
-#     bp <- barplot(w,beside=TRUE,las=2,col=col,main="optimized weights for different settings")
-#   }
-#   legend("topright",legend=leg,fill=1:length(leg),title=ifelse(is.na(colby),"",colby))
-#
-# }

@@ -8,8 +8,8 @@ library(shinyalert)
 
 #### Globals ####
 source("G:/FAP/Equities/Betsizing/CodeTest/paa/RCOTest.R")
-as.of <-  "2020-04-16" #
-Portfolio <- "RE_EU"
+as.of <-  "2020-04-27" #
+Portfolio <- "APSCZREEU"
 filepath <- paste0("G:/FAP/Equities/Betsizing/R_results/",Portfolio,"/")
 
 # RCOres_l is loaded
@@ -26,6 +26,9 @@ available_y_values_v <- c("TotalRBDev", "NetInvestment", "PortfTEDev",
 available_return_types <- c("abs", "rel")
 available_algorithms <- c('NLOPT_LD_SLSQP')
 
+available_portfolios_v <- get_sh_portfolio_name()
+
+
 
 #### Header ####
 header <- dashboardHeader(title = "Optimization Analytics")
@@ -38,17 +41,22 @@ sidebar <- dashboardSidebar(
     menuItem("Documentation", icon = icon("file-alt"),
              href="http://wiki.suvanet.ch/display/fai/Bets-Sizing%3A+Optimierung+und+deren+Beurteilung#Bets-Sizing%3AOptimierungundderenBeurteilung-EvaluationInShiny"),
 
+    menuItem("CovMa Status Report ", icon = icon("file-alt"),
+             href="http://sqlreportingtaap.suvanet.ch/reports/report/FA/TAA/FAP%20-%20Equity/CovarianceMatrixStatusReport"),
+
     menuItem("Data Selection",
              icon=icon("sliders"),
 
-              # Portfolio
-              selectInput(inputId = 'portfolio',
-                          label = 'Portfolio',
-                          choices = c('RE_EU','RE_CH','EQ_CH_L','EQ_CH_SM','EQ_EU_L','EQ_EU_SM')),
-              # Date
-              dateInput(inputId = 'date',
-                        label = 'Calculation Date',
-                        value = Sys.Date()),
+             # Portfolio
+             selectInput(inputId = 'portfolio',
+                         label = 'Portfolio',
+                         choices = available_portfolios_v,
+                         selected = available_portfolios_v[1],
+                         multiple = FALSE),
+             # Date
+             dateInput(inputId = 'date',
+                       label = 'Calculation Date',
+                       value = Sys.Date()),
 
              # Settings ID
              numericInput(inputId = 'setid',
@@ -76,7 +84,7 @@ sidebar <- dashboardSidebar(
                             choices = available_x_values_v,
                             selected =  "TargetTE",
                             multiple = TRUE)
-             ), # menu item,
+    ), # menu item,
     actionButton(inputId = "save",
                  label =  "Save",
                  icon = icon("save"),
@@ -84,14 +92,14 @@ sidebar <- dashboardSidebar(
                  width = "85%"),
 
     checkboxInput(inputId = 'AddSet2SQL',
-                  label = 'Add Settings to SQL if saved',
+                  label = 'Upload saved settings to DB',
                   value = FALSE),
     useShinyalert(),
     checkboxInput(inputId = 'makeDefault',
-                  label = 'Make saved set default',
+                  label = 'Make saved settings default',
                   value = FALSE)
-    ) # sidebar menu
-  ) # dashboard sidebar
+  ) # sidebar menu
+) # dashboard sidebar
 
 
 
@@ -106,109 +114,109 @@ panel_calculate <- tabPanel(
 
   splitLayout(cellWidths = c("50%", "50%"),
 
-          column(width = 12,
-                 actionButton(inputId = "run_calc",
-                              label =  "Run Calculation",
-                              icon = icon("refresh"),
-                              class = "btn action-button",
-                              width = "50%")
-          ),
-          column(width = 12,
+              column(width = 12,
+                     actionButton(inputId = "run_calc",
+                                  label =  "Run Calculation",
+                                  icon = icon("refresh"),
+                                  class = "btn action-button",
+                                  width = "50%")
+              ),
+              column(width = 12,
 
-                 checkboxInput(inputId = 'targ_from_excel',
-                               label = 'Use Excel data',
-                               value = FALSE)
+                     checkboxInput(inputId = 'targ_from_excel',
+                                   label = 'Use Excel data',
+                                   value = FALSE)
 
-        )# end of column
-      ),#end of splitLayout
+              )# end of column
+  ),#end of splitLayout
 
   # Here initial load from DB is required to have a list of all available variants
   splitLayout(cellWidths = c("50%", "50%"),
 
-            column(width = 12,
+              column(width = 12,
 
-                 selectizeInput(inputId = 'TargetTE',
-                                label = 'TargetTE',
-                                choices = c(0.001, 0.005, 0.01),
-                                selected = c(0.001, 0.005, 0.01),
-                                multiple = TRUE,
-                                options = list(create = TRUE)),
+                     selectizeInput(inputId = 'TargetTE',
+                                    label = 'TargetTE',
+                                    choices = c(0.001, 0.005, 0.01),
+                                    selected = c(0.001, 0.005, 0.01),
+                                    multiple = TRUE,
+                                    options = list(create = TRUE)),
 
-                 selectInput(inputId = 'cov_run_id',
-                             label = 'Covariance ID',
-                             choices = NULL,
-                             selected = NULL,
-                             multiple = TRUE),
+                     selectInput(inputId = 'cov_run_id',
+                                 label = 'Covariance ID',
+                                 choices = NULL,
+                                 selected = NULL,
+                                 multiple = TRUE),
 
-                 selectInput(inputId = 'CovReturns',
-                             label = 'Type of Returns in Cov',
-                             choices = available_return_types,
-                             selected = available_return_types[1],
-                             multiple = TRUE),
+                     selectInput(inputId = 'CovReturns',
+                                 label = 'Type of Returns in Cov',
+                                 choices = available_return_types,
+                                 selected = available_return_types[1],
+                                 multiple = TRUE),
 
-                 selectInput(inputId = 'IndexFlex',
-                             label = 'Index Flexible',
-                             choices = c(TRUE, FALSE),
-                             selected = c(FALSE),
-                             multiple = TRUE),
+                     selectInput(inputId = 'IndexFlex',
+                                 label = 'Index Flexible',
+                                 choices = c(TRUE, FALSE),
+                                 selected = c(FALSE),
+                                 multiple = TRUE),
 
-                 selectInput(inputId = 'Ix_eq_Cash',
-                             label = 'Index = Cash',
-                             choices = c(TRUE, FALSE),
-                             selected = c(FALSE),
-                             multiple = TRUE),
+                     selectInput(inputId = 'Ix_eq_Cash',
+                                 label = 'Index = Cash',
+                                 choices = c(TRUE, FALSE),
+                                 selected = c(FALSE),
+                                 multiple = TRUE),
 
-                 selectizeInput(inputId = 'CashTolerance',
-                                label = 'Cash Tolerance',
-                                choices = c(0.05),
-                                selected = c(0.05),
-                                multiple = TRUE,
-                                options = list(create = TRUE))
+                     selectizeInput(inputId = 'CashTolerance',
+                                    label = 'Cash Tolerance',
+                                    choices = c(0.05),
+                                    selected = c(0.05),
+                                    multiple = TRUE,
+                                    options = list(create = TRUE))
 
-          ), #end of column 1
+              ), #end of column 1
 
-          column(width = 12,
+              column(width = 12,
 
-                 selectInput(inputId = 'InputParameters',
-                             label = 'Excel Sheet',
-                             choices = NULL,
-                             selected = NULL,
-                             multiple = TRUE),
+                     selectInput(inputId = 'InputParameters',
+                                 label = 'Excel Sheet',
+                                 choices = NULL,
+                                 selected = NULL,
+                                 multiple = TRUE),
 
-                 selectizeInput(inputId = 'LeverageTolerance',
-                                label = 'Leverage Tolerance',
-                                choices = c(0.05),
-                                selected = c(0.05),
-                                multiple = TRUE,
-                                options = list(create = TRUE)),
+                     selectizeInput(inputId = 'LeverageTolerance',
+                                    label = 'Leverage Tolerance',
+                                    choices = c(0.05),
+                                    selected = c(0.05),
+                                    multiple = TRUE,
+                                    options = list(create = TRUE)),
 
-                 selectInput(inputId = 'algo',
-                             label = 'Algorithm',
-                             choices = available_algorithms,
-                             selected = available_algorithms[1],
-                             multiple = TRUE),
+                     selectInput(inputId = 'algo',
+                                 label = 'Algorithm',
+                                 choices = available_algorithms,
+                                 selected = available_algorithms[1],
+                                 multiple = TRUE),
 
-                 selectizeInput(inputId = 'NetInvLambda',
-                                label = 'Net Investment Lambda',
-                                choices = c(100),
-                                selected = c(100),
-                                multiple = TRUE,
-                                options = list(create = TRUE)),
+                     selectizeInput(inputId = 'NetInvLambda',
+                                    label = 'Net Investment Lambda',
+                                    choices = c(100),
+                                    selected = c(100),
+                                    multiple = TRUE,
+                                    options = list(create = TRUE)),
 
-                 selectizeInput(inputId = 'LowConvictionExitInDays',
-                                label = 'Low Conviction Exit In Days',
-                                choices = c(100),
-                                selected = c(100),
-                                multiple = TRUE,
-                                options = list(create = TRUE)),
+                     selectizeInput(inputId = 'LowConvictionExitInDays',
+                                    label = 'Low Conviction Exit In Days',
+                                    choices = c(100),
+                                    selected = c(100),
+                                    multiple = TRUE,
+                                    options = list(create = TRUE)),
 
-                 selectizeInput(inputId = 'ConvictionGroups',
-                                label = 'Conviction Groups',
-                                choices = c(1),
-                                selected = c(1),
-                                multiple = TRUE,
-                                options = list(create = TRUE))
-    )# end column
+                     selectizeInput(inputId = 'ConvictionGroups',
+                                    label = 'Conviction Groups',
+                                    choices = c(1),
+                                    selected = c(1),
+                                    multiple = TRUE,
+                                    options = list(create = TRUE))
+              )# end column
   )# end splitLayout
 ) # end tabPanel
 
@@ -216,9 +224,9 @@ panel_calculate <- tabPanel(
 
 #### Comparison Panel ####
 panel_comparison <- tabPanel(title = "Comparison",
-                    splitLayout(cellWidths = c("50%", "50%"),
-                                plotOutput('comparison', click = "comparison_plot_click"),
-                                plotOutput('overview')))
+                             splitLayout(cellWidths = c("50%", "50%"),
+                                         plotOutput('comparison', click = "comparison_plot_click"),
+                                         plotOutput('overview')))
 
 #### Weights Panel ####
 panel_weights <- tabPanel(title = "Weights", plotOutput("weights"))
@@ -247,9 +255,9 @@ body <- dashboardBody(tabItems(
                    panel_rc,
                    panel_details)
 
-      )# fluidRow
-    )# tabItem
-  )# TabItems
+          )# fluidRow
+  )# tabItem
+)# TabItems
 )# dashboard body
 
 
@@ -322,31 +330,54 @@ server <- function(input, output, session){
 
     # EvalRCOres
     EvalRCOres
-})
+  })
 
   settingsField <- observe({
+
+    req(input$portfolio)
+    req(input$date)
 
     # Everything works here right: the problem is that Michis portfolios covMas are not valid anymore
     # We need to check if the validation in SP is done correctly, since in R these covMa works fine...
     # TODO   after testing delete this line and use input$portfolio in the next call
     # portfolio_name <- "APSFBEQCHL"
-    portfolio_name <- input$portfolio
 
-    # # Get all available for a portfolio covariance matrices if a portfolio changes
-    # available_cov_run_ids_l <- APS::get_sh_cov_run_ids(portfolio_name = portfolio_name)
-    #
-    # choices_v <- available_cov_run_ids_l$sh_values_v
-    # default_cov_ind <- available_cov_run_ids_l$def_cov_ind
-    #
-    # # Update covariance matrix ID parameter options
-    # updateSelectInput(session = session,
-    #                   inputId = 'cov_run_id',
-    #                   label = 'Covariance ID',
-    #                   choices = choices_v,
-    #                   selected = choices_v[default_cov_ind])
+    portfolio_name <- input$portfolio
+    # Get all available for a portfolio covariance matrices if a portfolio changes
+    available_cov_run_ids_l <- get_sh_cov_run_ids(portfolio_name = portfolio_name)
+
+    choices_v <- available_cov_run_ids_l$sh_values_v
+    default_cov_ind <- available_cov_run_ids_l$def_cov_ind
+
+    if(choices_v[default_cov_ind] != "No valid covariance"){
+      shinyjs::enable("cov_run_id")
+    }else{
+      shinyjs::disable("cov_run_id")
+    }
+
+
+    # Update covariance matrix ID parameter options
+    updateSelectInput(session = session,
+                      inputId = 'cov_run_id',
+                      label = 'Covariance ID',
+                      choices = choices_v,
+                      selected = choices_v[default_cov_ind])
 
     available_ws_v <- get_sh_ws(portfolio_name = input$portfolio,
                                 date = input$date)
+
+
+    if(available_ws_v[1] == "Excel does not exist"){
+      # If there are not Excel there is no sence to use it
+      # + if a user changes a portfolio checkbox must be reset to FALSE (?)
+      # After checkbox is reset, event is triggered and Excel sheet is disabled
+      updateCheckboxInput(session = session,
+                          inputId = 'targ_from_excel',
+                          label = 'Use Excel data',
+                          value = FALSE)
+    }else{
+      # Nothing. Update will be done in the next lines
+    }
 
     # Update worksheets parameter options
     updateSelectInput(session = session,
@@ -365,220 +396,223 @@ server <- function(input, output, session){
     }
   })
 
-output$comparison <- renderPlot({
+  output$comparison <- renderPlot({
 
-  # The output is a plot
-  compareRCOruns(setid = input$setid,
-                 RCOres_l = selectedData(),
-                 yaxis = input$ycol,
-                 xaxis = input$xcol,
-                 group_by = input$group_by,
-                 current_point = input$setid)
+    # The output is a plot
+    compareRCOruns(setid = input$setid,
+                   RCOres_l = selectedData(),
+                   yaxis = input$ycol,
+                   xaxis = input$xcol,
+                   group_by = input$group_by,
+                   current_point = input$setid)
 
-})
+  })
 
-output$overview <- renderPlot({
+  output$overview <- renderPlot({
 
-  plotSingleSetIDfromRCOres(setid = input$setid,
-                            RCOres_l = selectedData(),
-                            plot_type = "overview")
-})
+    plotSingleSetIDfromRCOres(setid = input$setid,
+                              RCOres_l = selectedData(),
+                              plot_type = "overview")
+  })
 
-output$weights <- renderPlot({
+  output$weights <- renderPlot({
 
-  plotSingleSetIDfromRCOres(setid = input$setid,
-                            RCOres_l = selectedData(),
-                            plot_type = "act_rel_weights")
-
-
-})
-
-output$rc <- renderPlot({
-
-  plotSingleSetIDfromRCOres(setid = input$setid,
-                            RCOres_l = selectedData(),
-                            plot_type = "risk_contr")
-})
-
-output$table <- DT::renderDataTable({
-
-  draw_table(setid = input$setid,
-             RCOres_l = selectedData())
+    plotSingleSetIDfromRCOres(setid = input$setid,
+                              RCOres_l = selectedData(),
+                              plot_type = "act_rel_weights")
 
 
-})
+  })
+
+  output$rc <- renderPlot({
+
+    plotSingleSetIDfromRCOres(setid = input$setid,
+                              RCOres_l = selectedData(),
+                              plot_type = "risk_contr")
+  })
+
+  output$table <- DT::renderDataTable({
+
+    draw_table(setid = input$setid,
+               RCOres_l = selectedData())
 
 
-# Event Click: Show details for a chosen optimization settings point
-observeEvent(eventExpr = input$comparison_plot_click, handlerExpr =
-{
-  # Start of event handler
-  # update input
-  EvalRCOres <- selectedData()
+  })
 
-  # Create a full set of possible options (which can be selected)
-  opt_set_and_details_df <- cbind(EvalRCOres$details_df, EvalRCOres$settings_df)
-  x_y_df <- opt_set_and_details_df[,c(input$xcol,input$ycol), drop = FALSE]
-
-  # Get click coordinates
-  click <- input$comparison_plot_click
-  click <- c(click$x,click$y)
-
-  opt_set_and_details_df$dist <- mydistfun(lookup_df = x_y_df, point_v = click)
-  clickselected_setID <- opt_set_and_details_df[which.min(opt_set_and_details_df$dist),"setID"]
-
-
-  if(exists("clickselected_setID"))
+  # Event Click: Show details for a chosen optimization settings point
+  observeEvent(eventExpr = input$comparison_plot_click, handlerExpr =
   {
-    updateNumericInput(session = session,
-                       inputId = 'setid',
-                       label = 'Settings ID',
-                       value = clickselected_setID,
-                       min = 1,
-                       max = ncol(EvalRCOres$rw_ma))
-  }
-})
-
-# Save
-observeEvent(eventExpr = input$save,
-  {
-    if(input$AddSet2SQL == FALSE &&
-       input$makeDefault == TRUE){
-
-      shinyalert(title = "Warning",
-                 type = "warning",
-                 closeOnEsc = TRUE,
-                 closeOnClickOutside = TRUE,
-                 showConfirmButton = TRUE,
-                 animation = TRUE,
-                 html = TRUE,
-                 text = paste0("'Make Default' works only with checked 'Add set to SQL' option. It will be ignored.") # end text
-      ) # end shinyalert
-
-      # let a user read a message
-      Sys.sleep(time = 5)
-      updateCheckboxInput(session = session,
-                          inputId = 'makeDefault',
-                          label = 'Add Settings to SQL if saved',
-                          value = FALSE)
-
-    }else{
-      # To additional message required
-    }
-
+    # Start of event handler
+    # update input
     EvalRCOres <- selectedData()
 
-    f.writeOptdetails2xlsx(RCOres_l = EvalRCOres,
-                           Portfolio = input$portfolio,
-                           Calcdate = "LIVE",
-                           ShortIndexWithOptimCash = 1,
-                           ZeroNetInvestment = FALSE,
-                           OnlyID = input$setid)
+    # Create a full set of possible options (which can be selected)
+    opt_set_and_details_df <- cbind(EvalRCOres$details_df, EvalRCOres$settings_df)
+    x_y_df <- opt_set_and_details_df[,c(input$xcol,input$ycol), drop = FALSE]
 
-    if(input$AddSet2SQL){
-      # get single settings set
-      set_df <- EvalRCOres$settings_df[input$setid, , drop = FALSE]
+    # Get click coordinates
+    click <- input$comparison_plot_click
+    click <- c(click$x,click$y)
 
-      inSQLas <- writeRCOsettingsToSQL(set_df)
-      # get only a number
-      inSQLas <- as.numeric(gsub("\\D", "", as.character(inSQLas[1,1])))
+    opt_set_and_details_df$dist <- mydistfun(lookup_df = x_y_df, point_v = click)
+    clickselected_setID <- opt_set_and_details_df[which.min(opt_set_and_details_df$dist),"setID"]
 
-      if(input$makeDefault){
 
-        update_default_settings(pname = input$portfolio,
-                                setID = inSQLas,
-                                covID = set_df$cov_run_id)
-        isDefault <- "Yes"
-
-      }else{
-        isDefault <- "No"
-      }
-    }else{
-      inSQLas <- "DB has not been updated"
-      isDefault <- "No"
+    if(exists("clickselected_setID"))
+    {
+      updateNumericInput(session = session,
+                         inputId = 'setid',
+                         label = 'Settings ID',
+                         value = clickselected_setID,
+                         min = 1,
+                         max = ncol(EvalRCOres$rw_ma))
     }
+  })
 
-    shinyalert(title = paste("Settings with ID",input$setid,"has been saved!"),
-               type = "success",
-               closeOnEsc = TRUE,
-               closeOnClickOutside = TRUE,
-               showConfirmButton = TRUE,
-               animation = TRUE,
-               html = TRUE,
-               text = paste0(paste0("<b>Filename:</b> ", input$portfolio, "_LIVE_optdetails.xlsx <br />"),
-                             paste0("<b>Path:</b> G:/FAP/Equities/Betsizing/R_results/", input$portfolio, "<br />"),
-                             paste0("<b>SQL table name:</b> betsizing.CalculationRCOSettingSets <br />"),
-                             paste0("<b>Set ID:</b> ", inSQLas,"<br />"),
-                             paste0("<b>Set is default:</b> ", isDefault,"<br />")
-                             ) # end text
-               ) # end shinyalert
-} # end handler
-) # end observe event
+  # Save
+  observeEvent(eventExpr = input$save,
+               {
+                 if(input$AddSet2SQL == FALSE &&
+                    input$makeDefault == TRUE){
 
-output$message <- renderText({
-  validate(
-    need(input$portfolio != "", "Fill Portfolio Name field"),
-    need(input$TargetTE != "", "Fill TargetTE field"),
-    need(input$InputParameters != "", "Fill Excel Sheet field"),
-    need(input$CovReturns != "", "Fill Type of Returns in Cov field"),
-    need(input$cov_run_id != "", "Fill Covariance ID field"),
-    need(input$IndexFlex != "", "Fill Index Flex field"),
-    need(input$Ix_eq_Cash != "", "Fill Index = Cash field"),
-    need(input$CashTolerance != "", "Fill Cash Tolerance field"),
-    need(input$LeverageTolerance != "", "Fill Leverage Tolerance field"),
-    need(input$algo != "", "Fill Algorithm field"),
-    need(input$NetInvLambda != "", "Fill Net Investment Lambda field"),
-    need(input$LowConvictionExitInDays != "", "Fill Low Conviction Exit In Days field"),
-    need(input$ConvictionGroups != "", "Fill Conviction Groups field")
-  )
+                   shinyalert(title = "Warning",
+                              type = "warning",
+                              closeOnEsc = TRUE,
+                              closeOnClickOutside = TRUE,
+                              showConfirmButton = TRUE,
+                              animation = TRUE,
+                              html = TRUE,
+                              text = paste0("'Make Default' works only with checked 'Add set to SQL' option. It will be ignored.") # end text
+                   ) # end shinyalert
 
-  "Choose Settings and Run Calculation"
-})
+                   # let a user read a message
+                   Sys.sleep(time = 5)
+                   updateCheckboxInput(session = session,
+                                       inputId = 'makeDefault',
+                                       label = 'Add Settings to SQL if saved',
+                                       value = FALSE)
+
+                 }else{
+                   # To additional message required
+                 }
+
+                 EvalRCOres <- selectedData()
+
+                 f.writeOptdetails2xlsx(RCOres_l = EvalRCOres,
+                                        Portfolio = input$portfolio,
+                                        Calcdate = "LIVE",
+                                        ShortIndexWithOptimCash = 1,
+                                        ZeroNetInvestment = FALSE,
+                                        OnlyID = input$setid)
+
+                 if(input$AddSet2SQL){
+                   # get single settings set
+                   set_df <- EvalRCOres$settings_df[input$setid, , drop = FALSE]
+
+                   inSQLas <- writeRCOsettingsToSQL(set_df)
+                   # get only a number
+                   inSQLas <- as.numeric(gsub("\\D", "", as.character(inSQLas[1,1])))
+
+                   if(input$makeDefault){
+
+                     update_default_settings(pname = input$portfolio,
+                                             setID = inSQLas,
+                                             covID = set_df$cov_run_id)
+                     isDefault <- "Yes"
+
+                   }else{
+                     isDefault <- "No"
+                   }
+                 }else{
+                   inSQLas <- "DB has not been updated"
+                   isDefault <- "No"
+                 }
+
+                 shinyalert(title = paste("Settings with ID",input$setid,"has been saved!"),
+                            type = "success",
+                            closeOnEsc = TRUE,
+                            closeOnClickOutside = TRUE,
+                            showConfirmButton = TRUE,
+                            animation = TRUE,
+                            html = TRUE,
+                            text = paste0(paste0("<b>Filename:</b> ", input$portfolio, "_LIVE_optdetails.xlsx <br />"),
+                                          paste0("<b>Path:</b> G:/FAP/Equities/Betsizing/R_results/", input$portfolio, "<br />"),
+                                          paste0("<b>SQL table name:</b> betsizing.CalculationRCOSettingSets <br />"),
+                                          paste0("<b>Set ID:</b> ", inSQLas,"<br />"),
+                                          paste0("<b>Set is default:</b> ", isDefault,"<br />")
+                            ) # end text
+                 ) # end shinyalert
+               } # end handler
+  ) # end observe event
+
+  output$message <- renderText({
+    validate(
+      need(input$portfolio != "", "Fill Portfolio Name field"),
+      need(input$TargetTE != "", "Fill TargetTE field"),
+      need(input$InputParameters != "", "Fill Excel Sheet field"),
+      need(input$CovReturns != "", "Fill Type of Returns in Cov field"),
+      need(input$cov_run_id != "", "Fill Covariance ID field"),
+      need(input$cov_run_id != "No valid covariance", "No valid covariance"),
+      need(input$IndexFlex != "", "Fill Index Flex field"),
+      need(input$Ix_eq_Cash != "", "Fill Index = Cash field"),
+      need(input$CashTolerance != "", "Fill Cash Tolerance field"),
+      need(input$LeverageTolerance != "", "Fill Leverage Tolerance field"),
+      need(input$algo != "", "Fill Algorithm field"),
+      need(input$NetInvLambda != "", "Fill Net Investment Lambda field"),
+      need(input$LowConvictionExitInDays != "", "Fill Low Conviction Exit In Days field"),
+      need(input$ConvictionGroups != "", "Fill Conviction Groups field")
+    )
+
+    "Choose Settings and Run Calculation"
+  })
 
 
-# Run Calculation
-observeEvent(eventExpr = input$run_calc,
-             {
+  # Run Calculation
+  observeEvent(eventExpr = input$run_calc,
+               {
+                 validate(
+                   need(input$portfolio != "", "Fill Portfolio Name field"),
+                   need(!is.null(input$date), "Fill date"),
+                   need(input$TargetTE != "", "Fill TargetTE field"),
+                   need(input$InputParameters != "", "Fill Excel Sheet field"),
+                   need(input$CovReturns != "", "Fill Type of Returns in Cov field"),
+                   need(input$cov_run_id != "", "Fill Covariance ID field"),
+                   need(input$cov_run_id != "No valid covariance", "No valid covariance"),
+                   need(input$IndexFlex != "", "Fill Index Flex field"),
+                   need(input$Ix_eq_Cash != "", "Fill Index = Cash field"),
+                   need(input$CashTolerance != "", "Fill Cash Tolerance field"),
+                   need(input$LeverageTolerance != "", "Fill Leverage Tolerance field"),
+                   need(input$algo != "", "Fill Algorithm field"),
+                   need(input$NetInvLambda != "", "Fill Net Investment Lambda field"),
+                   need(input$LowConvictionExitInDays != "", "Fill Low Conviction Exit In Days field"),
+                   need(input$ConvictionGroups != "", "Fill Conviction Groups field")
+                 )
 
-               validate(
-                 need(input$portfolio != "", "Fill Portfolio Name field"),
-                 need(input$date != "", "Fill date"),
-                 need(input$TargetTE != "", "Fill TargetTE field"),
-                 need(input$InputParameters != "", "Fill Excel Sheet field"),
-                 need(input$CovReturns != "", "Fill Type of Returns in Cov field"),
-                 need(input$cov_run_id != "", "Fill Covariance ID field"),
-                 need(input$IndexFlex != "", "Fill Index Flex field"),
-                 need(input$Ix_eq_Cash != "", "Fill Index = Cash field"),
-                 need(input$CashTolerance != "", "Fill Cash Tolerance field"),
-                 need(input$LeverageTolerance != "", "Fill Leverage Tolerance field"),
-                 need(input$algo != "", "Fill Algorithm field"),
-                 need(input$NetInvLambda != "", "Fill Net Investment Lambda field"),
-                 need(input$LowConvictionExitInDays != "", "Fill Low Conviction Exit In Days field"),
-                 need(input$ConvictionGroups != "", "Fill Conviction Groups field")
-               )
+                 # covariance matrices values should contain only numbers (no "default" word)
+                 cov_run_id_v <- input$cov_run_id
+                 cov_run_id_v <- regmatches(cov_run_id_v, regexpr("[[:digit:]]+", cov_run_id_v))
 
-               RCO_res_l <- runRCOLoops(Portfolio = as.character(input$portfolio),
-                                        calculation_date = as.Date(input$date),
-                                        TargetTE = as.numeric(input$TargetTE),
-                                        Trials = 100000,
-                                        InputParameters = as.character(input$InputParameters),
-                                        CovReturns = as.character(input$CovReturns),
-                                        cov_run_id = as.character(input$cov_run_id),
-                                        IndexFlex = as.logical(input$IndexFlex),
-                                        Ix_eq_Cash = as.logical(input$Ix_eq_Cash),
-                                        CashTolerance = as.numeric(input$CashTolerance),
-                                        LeverageTolerance = as.numeric(input$LeverageTolerance),
-                                        algo = as.character(input$algo),
-                                        NetInvLambda = as.numeric(input$NetInvLambda),
-                                        LowConvictionExitInDays = as.integer(input$LowConvictionExitInDays),
-                                        ConvictionGroups = as.integer(input$ConvictionGroups),
-                                        targ_from_excel = targ_from_excel)
+                 RCO_res_l <- runRCOLoops(Portfolio = as.character(input$portfolio),
+                                          calculation_date = as.Date(input$date),
+                                          TargetTE = as.numeric(input$TargetTE),
+                                          Trials = 100000,
+                                          InputParameters = as.character(input$InputParameters),
+                                          CovReturns = as.character(input$CovReturns),
+                                          cov_run_id = as.character(cov_run_id_v),
+                                          IndexFlex = as.logical(input$IndexFlex),
+                                          Ix_eq_Cash = as.logical(input$Ix_eq_Cash),
+                                          CashTolerance = as.numeric(input$CashTolerance),
+                                          LeverageTolerance = as.numeric(input$LeverageTolerance),
+                                          algo = as.character(input$algo),
+                                          NetInvLambda = as.numeric(input$NetInvLambda),
+                                          LowConvictionExitInDays = as.integer(input$LowConvictionExitInDays),
+                                          ConvictionGroups = as.integer(input$ConvictionGroups),
+                                          targ_from_excel = input$targ_from_excel)
 
-               data_l <- selectedData()
+                 data_l <- selectedData()
 
-             }
-)# end of Run Calculation
-
+               }
+  )# end of Run Calculation
 
 } # end server
 
