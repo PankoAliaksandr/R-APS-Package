@@ -1,4 +1,4 @@
-rm(list = ls())
+
 
 # You can learn more about package authoring with RStudio at:
 #
@@ -776,7 +776,7 @@ get_rcb <- function(weight_v, cov){
 
     # Dimensions check
     stopifnot(isTRUE(is.vector(weight_v)) &&
-              length(weight_v) == nrow(cov)
+                length(weight_v) == nrow(cov)
               && nrow(cov) == ncol(cov))
 
     RCO_names_v <- names(weight_v)
@@ -1400,7 +1400,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # soft leverage constrained: depends on Cash- and LeverageTolerance, needed in Settings to filter out algos that do not work!
       all_possible_settings_df$SoftNetInvConstraint <- ifelse(all_possible_settings_df$LeverageTolerance != 0 |
-                                                              all_possible_settings_df$CashTolerance != 0,
+                                                                all_possible_settings_df$CashTolerance != 0,
                                                               TRUE, FALSE)
 
       # Available algorithms
@@ -1410,7 +1410,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
       # Soft leverage constrained does not work with Lagrangian optimizer (as Lagrangian uses an equality constraint!)
       # find infeasible combinations
       ind_to_delete <- which(all_possible_settings_df$algo %in% algo_lagrange &
-                             all_possible_settings_df$SoftNetInvConstraint == TRUE)
+                               all_possible_settings_df$SoftNetInvConstraint == TRUE)
 
       if (length(ind_to_delete) > 0){
         # it means that there is at least one infeasible combination
@@ -1428,8 +1428,8 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # Index equals Cash is only possible without IndexFlex and without Soft Leverage Constraint and needs a non-gradient algo
       ind_to_delete <- which((all_possible_settings_df$algo %in% algo_gradient |
-                              all_possible_settings_df$SoftNetInvConstraint |
-                              all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
+                                all_possible_settings_df$SoftNetInvConstraint |
+                                all_possible_settings_df$IndexFlex) & all_possible_settings_df$Ix_eq_Cash)
 
       if (length(ind_to_delete) > 0){
 
@@ -1446,7 +1446,7 @@ f.delete_infeasible_settings <- function(all_possible_settings_df){
 
       # NetInv-Lambda > 0 only makes sense with SoftNetInvConstraint == TRUE
       ind_to_delete <- which((all_possible_settings_df$NetInvLambda > 0 &
-                              all_possible_settings_df$SoftNetInvConstraint == FALSE))
+                                all_possible_settings_df$SoftNetInvConstraint == FALSE))
 
       if (length(ind_to_delete) > 0){
 
@@ -1483,8 +1483,8 @@ get_default_CovMaID <- function(Portfolioname){
   stopifnot(class(Portfolioname) == "character")
 
   def_cov_id_query <- paste0("select max(CovMatrixRunID) as defCovMaID
-                            from betsizing.CalculationDefaultSettings
-                            where CustomPortfolioName = '", Portfolioname, "'")
+                             from betsizing.CalculationDefaultSettings
+                             where CustomPortfolioName = '", Portfolioname, "'")
 
   # Execute Query and return the default COVID
   con <- FAFunc.GetDB()
@@ -1502,7 +1502,7 @@ get_default_CovMaID <- function(Portfolioname){
     }else{
       print(paste0("NLopt solver status: ", -22))
       print("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
-           "was calculated yet for the given portfolio")
+            "was calculated yet for the given portfolio")
       stop("NLopt solver status message: get_default_CovMaID: No Covariance matrix as specified ",
            "was calculated yet for the given portfolio")
     }
@@ -1562,10 +1562,11 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
     }
   }
 
-  t_settings_df <- t(settings_df)
-  rownames(t_settings_df) <- paste("set",colnames(settings_df))
-  colnames(t_settings_df) <- colnames(optres_ma)
+  # Make the same stucture as optres matrix
+  row.names(settings_df) <- paste0("set", settings_df$setID)
+  t_settings_df <- as.data.frame(t(settings_df))
 
+  # Define the number of securities
   sec_nr <- length(targ_3D_array[,1,1])
 
   # implement Index Position in output if desired so
@@ -1580,17 +1581,16 @@ f.writeOptdetails2xlsx <- function(RCOres_l,
     }
   }
 
-  pr.optres_ma <- rbind(as.matrix(t_settings_df), as.matrix(optres_ma))
-
-  rownames(pr.optres_ma) <- c(rownames(pr.optres_ma)[1:(nrow(pr.optres_ma)-sec_nr)],names(targ_3D_array[,1,1]))
+  param_opt_res_df <- rbind(as.data.frame(optres_ma), t_settings_df)
 
   file_path_out <- paste("G:/FAP/Equities/Betsizing/R_results/",Portfolio,"/",sep="",collapse="")
 
   file_path_name <- paste(file_path_out,Portfolio,"_",Calcdate,"_optdetails.xlsx",sep="",collapse="")
 
-  xlsx::write.xlsx(x = pr.optres_ma,
+  xlsx::write.xlsx(x = param_opt_res_df,
                    file = file_path_name,
-                   sheetName="R.output")
+                   row.names = TRUE,
+                   sheetName = "R.output")
 
   print("Results are saved in Excel")
 }
@@ -1863,6 +1863,9 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
 
       }
 
+      # Drop 0 convictions tickers (they are not relevant for optimization)
+      target_settings_df <- target_settings_df[target_settings_df$conviction != 0, ]
+
       sec_names_v <- row.names(target_settings_df)
       sec_nr <- length(sec_names_v)
 
@@ -1936,6 +1939,10 @@ runRCOLoops <- function(Portfolio,                 #character string of the port
 
         # Save target settings
         # TODO check df possibility
+
+        # Drop 0 convictions tickers (they are not relevant for optimization)
+        target_settings_df <- target_settings_df[target_settings_df$conviction != 0, ]
+
         target_settings_ma <- as.matrix(target_settings_df)
         targ_3D_array[,,next_targ_ind] <- target_settings_ma
         # Make sure that the name and the matrix are consistent
@@ -2073,13 +2080,17 @@ compareRCOruns <- function(setid,
   # Unite all columns to let group by several columns
   opt_res_df <- cbind(RCOres_l$details_df, RCOres_l$settings_df)
 
+  # set points size
+  sz <- rep(3, nrow(opt_res_df))
+  sz[current_point] = 10
+
+  # Remove non-valid runs
+  sz <- sz[opt_res_df$ValidResult == TRUE]
+  opt_res_df <- opt_res_df[opt_res_df$ValidResult == TRUE,]
+
   if(xaxis %in% available_x_values_v &&
      yaxis %in% available_y_values_v &&
      all(group_by %in% available_x_values_v)){
-
-    # set points size
-    sz <- rep(3, nrow(opt_res_df))
-    sz[current_point] = 10
 
     # Round value. Must be always numeric
     if(class(opt_res_df[,yaxis]) == "numeric"){
@@ -2093,15 +2104,6 @@ compareRCOruns <- function(setid,
     }else{
       #  rounding is not required
     }
-
-    #TODO delete me a bit later
-    # # Change Name
-    # cnames <- colnames(opt_res_df)
-    # ind <- which(cnames == yaxis)
-    # cnames[ind] <- "TEactMtarg"
-    # colnames(opt_res_df) <- cnames
-    # yaxis <- cnames[ind]
-
 
     opt_res_df[,xaxis] <- as.factor(opt_res_df[,xaxis])
 
@@ -2362,10 +2364,10 @@ draw_plot <- function(rw_v,
     graphics::points(x = bp.rw, y = ub_act_v, pch = 20, col = "blue")
 
     # Add convictions: to make sure the direction and the amplitude is feasible
-    shift <- 0.0015 * sign(rw_act_v)
+    shift <- sign(rw_act_v) * max(abs(rw_act_v)) * 0.1
     graphics::text(x = bp.rw,
                    y = shift + rw_act_v,
-                   labels = round(convictions_act_v,0),
+                   labels = round(convictions_act_v,3),
                    cex = txtsize,
                    col = "darkgreen")
 
@@ -2426,9 +2428,9 @@ draw_plot <- function(rw_v,
     graphics::points(x = x, y = rb_act_v, pch = 20, col = "blue")
 
     # Add utilization percentage
-    rb_utilization <- round(((rc_act_v / rb_act_v) * 100), 0)
+    rb_utilization <- round(((rc_act_v / rb_act_v) * 100), 1)
     rb_utilization <- rb_utilization
-    shift <- 0.5 * sign(rc_act_v)
+    shift <- sign(rc_act_v) * max(abs(rc_act_v)) * 0.1
     graphics::text(x,
                    shift + rc_act_v,
                    labels = rb_utilization,
@@ -2437,7 +2439,7 @@ draw_plot <- function(rw_v,
 
     # legend: bar plot share of active weights
     graphics::legend("topleft",
-                     c("unrestricted", "restricted", "target", "utilization(%)"),
+                     c("below target", "above target", "target", "utilization(%)"),
                      col = c("black", "red", "blue", "darkgreen"),
                      pch = c(15,15,20,17),
                      bty = "n",
@@ -2559,7 +2561,7 @@ draw_plot <- function(rw_v,
                           values_v = all_v,
                           chart_type = 'bar')
 
-    txtsize <- ifelse(length(rc_act_v) > 40, 0.8, 1)
+    txtsize <- ifelse(length(rc_act_v) > 40, 0.6, 0.8)
 
     if(any(is.na(rw_v))){
       # This means that optimization has failed
@@ -2617,18 +2619,53 @@ mydistfun <- function(lookup_df, point_v)
       class(point_v) == "integer" ||
       class(point_v) == "character")){
 
-    message("the euclidean norm is used for all values, only for numeric inputs meaningful outputs result")
+    # message("the euclidean norm is used for all values, only for numeric inputs meaningful outputs result")
 
-    #ensure is numeric
-    if((class(lookup_df[,1]) %in% c("numeric","integer") == FALSE) ||
-       (class(lookup_df[,2]) %in% c("numeric","integer") == FALSE)){
+    # ensure is numeric
+    dist_x <- NULL
+    dist_y <- NULL
+    selected_value_x <- NULL
+    selected_value_y <- NULL
 
-      warning("No procedure for the distance measuring for the class of one axis available -> cant find clicked at point!!!")
+    if((class(lookup_df[,1]) %in% c("numeric","integer") == TRUE) &&
+       (class(lookup_df[,2]) %in% c("numeric","integer") == TRUE)){
 
-    }else{
-      #calc distance
+      # lookup_df is ordered corresponding to set id. Row number gives set id
+
       dist <- (lookup_df[,1]-point_v[1])^2 + (lookup_df[,2]-point_v[2])^2
+      setid <- which.min(dist)
+
+    }else if((class(lookup_df[,1]) %in% c("numeric","integer") == TRUE) &&
+             (class(lookup_df[,2]) %in% c("numeric","integer") == FALSE)){
+
+      # y is not numeric
+      # click coordinate for non-numeric is just the place number
+      place <- round(point_v[2],0)
+      selected_value_y <- unique(lookup_df[,2])[place]
+      temp_lookup_df <- lookup_df[lookup_df[,2] == selected_value_y, ]
+
+      dist_x <- (temp_lookup_df[,1]-point_v[1])^2
+      selected_value_x <- temp_lookup_df[which.min(dist_x),2]
+
+      setid <- which(lookup_df[,1] == selected_value_x & lookup_df[,2] == selected_value_y)
+
+    }else if((class(lookup_df[,1]) %in% c("numeric","integer") == FALSE) &&
+             (class(lookup_df[,2]) %in% c("numeric","integer") == TRUE)){
+
+      # y is not numeric
+      # click coordinate for non-numeric is just the place number
+      place <- round(point_v[1],0)
+      selected_value_x <- unique(lookup_df[,1])[place]
+      temp_lookup_df <- lookup_df[lookup_df[,1] == selected_value_x, ]
+
+      dist_y <- (temp_lookup_df[,2]-point_v[2])^2
+      selected_value_y <- temp_lookup_df[which.min(dist_y),2]
+
+      setid <- which(lookup_df[,1] == selected_value_x & lookup_df[,2] == selected_value_y)
     }
+
+    return(setid)
+
   }else{
     print("mydistfun: input structure is not correct")
     stop("mydistfun: input structure is not correct")
@@ -2663,8 +2700,8 @@ draw_table <- function(setid, RCOres_l){
   union_df <- union_df[c(ind_v, all_ind_v[!all_ind_v %in% ind_v]), ,drop = FALSE]
 
   DT::datatable(data =  union_df,
-            rownames = TRUE,
-            selection = list(mode = 'multiple', selected = c(1,2,3,4,5,6)))
+                rownames = TRUE,
+                selection = list(mode = 'multiple', selected = c(1,2,3,4,5,6)))
 }
 
 writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
@@ -2714,7 +2751,7 @@ writeRCOsettingsToSQL <- function(single_setings_set_df, verbose = FALSE){
       # some values are generated inside the RCO Loops. They shouldn't be saved in DB
       exclude_v <- c("LbMax","InputParameters","Specif_COV",
                      "setID","SoftLeverageConstrained","CovCalcWay",
-                     "CovReturns","CovID", "setID")
+                     "CovReturns","CovID", "setID", "cov_run_id")
 
       insert_df <- insert_df[!insert_df$FK_ParameterName %in% exclude_v, ,drop = FALSE]
 
@@ -2870,15 +2907,18 @@ get_sh_cov_run_ids <- function(portfolio_name){
             return(list(sh_values_v = sh_values_v, def_cov_ind = def_cov_ind))
 
           }else{
-            stop("It is impossible to have 2 default covariance matrices for one portfolio")
+            # Add error message to UI to let a user know what's happened
+            print("Default covariance matrix for a portfolio should exist and be unique")
+            # Return a message: 1 corresponds to the first positino of the message
+            return(list(sh_values_v = "No valid default covariance", def_cov_ind = 1))
           }
         }else{
           print("get_sh_cov_run_ids: Output data frame structure is not correct")
           stop("get_sh_cov_run_ids: Output data frame structure is not correct")
         }
       }else{
-          paste0("NLopt solver status message: For portfolio ",
-                 portfolio_name, " there are no calculated covariance matrices")
+        paste0("NLopt solver status message: For portfolio ",
+               portfolio_name, " there are no calculated covariance matrices")
         # Return a message: 1 corresponds to the first positino of the message
         return(list(sh_values_v = "No valid covariance", def_cov_ind = 1))
 
@@ -2980,8 +3020,6 @@ get_sh_portfolio_name <- function(){
     stop("get_sh_portfolio_name: Select statement contains an error ")
   }
 }
-
-
 
 
 
